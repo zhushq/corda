@@ -4,6 +4,7 @@ import com.typesafe.config.ConfigFactory
 import com.typesafe.config.ConfigParseOptions
 import net.corda.loadtest.tests.crossCashTest
 import net.corda.loadtest.tests.selfIssueTest
+import net.corda.nodeapi.config.parseAs
 import java.io.File
 
 /**
@@ -24,7 +25,7 @@ import java.io.File
  * Running the tests:
  *   The [LoadTest] API assumes that each load test will keep generating some kind of work to push to the nodes. It also
  *   assumes that the nodes' behaviour will be somewhat predictable, which is tracked in a state. For example say we
- *   want to self issue Cash on each node(see [SelfIssueTest]). We can predict that if we submit an Issue request of
+ *   want to self issue Cash on each node. We can predict that if we submit an Issue request of
  *   100 USD and 200 USD we should end up with 300 USD issued by the node. Each load test can define its own such
  *   invariant and should check for it in [LoadTest.gatherRemoteState].
  *   We then simply keep generating pieces of work and check that the invariants hold(see [LoadTest.RunParameters] on
@@ -46,17 +47,16 @@ fun main(args: Array<String>) {
     if (args.isEmpty()) {
         throw IllegalArgumentException("Usage: <binary> PATH_TO_CONFIG")
     }
-    val defaultConfig = ConfigFactory.parseResources("loadtest-reference.conf", ConfigParseOptions.defaults().setAllowMissing(false))
+    val options = ConfigParseOptions.defaults().setAllowMissing(false)
+    val defaultConfig = ConfigFactory.parseResources("loadtest-reference.conf", options)
     val defaultSshUserConfig = ConfigFactory.parseMap(
             if (defaultConfig.hasPath("sshUser")) emptyMap() else mapOf("sshUser" to System.getProperty("user.name"))
     )
-    val customConfig = ConfigFactory.parseFile(File(args[0]), ConfigParseOptions.defaults().setAllowMissing(false))
+    val customConfig = ConfigFactory.parseFile(File(args[0]), options)
     val resolvedConfig = customConfig.withFallback(defaultConfig).withFallback(defaultSshUserConfig).resolve()
-    val loadTestConfiguration = LoadTestConfiguration(resolvedConfig)
+    val loadTestConfiguration = resolvedConfig.parseAs<LoadTestConfiguration>()
 
-    if (loadTestConfiguration.nodeHosts.isEmpty()) {
-        throw IllegalArgumentException("Please specify at least one node host")
-    }
+    require(loadTestConfiguration.nodeHosts.isNotEmpty()) { "Please specify at least one node host" }
 
     runLoadTests(loadTestConfiguration, listOf(
             selfIssueTest to LoadTest.RunParameters(

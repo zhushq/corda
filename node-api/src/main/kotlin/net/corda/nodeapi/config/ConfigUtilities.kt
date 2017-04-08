@@ -22,11 +22,6 @@ import kotlin.reflect.jvm.jvmErasure
 @Target(AnnotationTarget.PROPERTY)
 annotation class OldConfig(val value: String)
 
-// TODO Move other config parsing to use parseAs and remove this
-operator fun <T> Config.getValue(receiver: Any, metadata: KProperty<*>): T {
-    return getValueInternal(metadata.name, metadata.returnType)
-}
-
 fun <T : Any> Config.parseAs(clazz: KClass<T>): T {
     require(clazz.isData) { "Only Kotlin data classes can be parsed" }
     val constructor = clazz.primaryConstructor!!
@@ -36,7 +31,7 @@ fun <T : Any> Config.parseAs(clazz: KClass<T>): T {
                 // Get the matching property for this parameter
                 val property = clazz.memberProperties.first { it.name == param.name }
                 val path = defaultToOldPath(property)
-                getValueInternal<Any>(path, param.type)
+                getValue<Any>(path, param.type)
             }
     return constructor.callBy(args)
 }
@@ -51,7 +46,7 @@ fun Config.toProperties(): Properties {
 }
 
 @Suppress("UNCHECKED_CAST")
-private fun <T> Config.getValueInternal(path: String, type: KType): T {
+private fun <T> Config.getValue(path: String, type: KType): T {
     return (if (type.arguments.isEmpty()) getSingleValue(path, type) else getCollectionValue(path, type)) as T
 }
 

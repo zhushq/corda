@@ -1,7 +1,5 @@
 package net.corda.loadtest
 
-import com.typesafe.config.Config
-import net.corda.nodeapi.config.getValue
 import java.nio.file.Path
 
 /**
@@ -14,22 +12,20 @@ import java.nio.file.Path
  * @param remoteNodeDirectory The remote node directory.
  * @param remoteMessagingPort The remote Artemis messaging port.
  * @param remoteSystemdServiceName The name of the node's systemd service
- * @param seed An optional starting seed for the [SplittableRandom] RNG. Note that specifying the seed may not be enough
+ * @param seed An optional starting seed for the [java.util.SplittableRandom] RNG. Note that specifying the seed may not be enough
  *     to make a load test reproducible due to unpredictable node behaviour, but it should make the local number
  *     generation deterministic as long as [SplittableRandom.split] is used as required. This RNG is also used as input
  *     for disruptions.
  */
 data class LoadTestConfiguration(
-        val config: Config
-) {
-    val sshUser: String by config
-    val localCertificatesBaseDirectory: Path by config
-    val localTunnelStartingPort: Int by config
-    val nodeHosts: List<String> = config.getStringList("nodeHosts")
-    val rpcUsername: String by config
-    val rpcPassword: String by config
-    val remoteNodeDirectory: Path by config
-    val remoteMessagingPort: Int by config
-    val remoteSystemdServiceName: String by config
-    val seed: Long? by config
-}
+    val sshUser: String,
+    val localCertificatesBaseDirectory: Path,
+    val localTunnelStartingPort: Int,
+    val nodeHosts: List<String>,
+    val rpcUsername: String,
+    val rpcPassword: String,
+    val remoteNodeDirectory: Path,
+    val remoteMessagingPort: Int,
+    val remoteSystemdServiceName: String,
+    val seed: Long?
+)
