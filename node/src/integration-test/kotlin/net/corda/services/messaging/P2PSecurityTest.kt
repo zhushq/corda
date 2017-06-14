@@ -11,7 +11,7 @@ import net.corda.core.utilities.DUMMY_BANK_A
 import net.corda.core.utilities.DUMMY_BANK_B
 import net.corda.core.utilities.getTestPartyAndCertificate
 import net.corda.node.internal.NetworkMapInfo
-import net.corda.node.services.config.configureWithDevSSLCertificate
+import net.corda.node.internal.configureWithDevSSLCertificate
 import net.corda.node.services.messaging.sendRequest
 import net.corda.node.services.network.NetworkMapService
 import net.corda.node.services.network.NetworkMapService.RegistrationRequest

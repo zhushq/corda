@@ -9,7 +9,6 @@ import net.corda.core.crypto.SecureHash
 import net.corda.core.crypto.X509Utilities
 import net.corda.core.crypto.commonName
 import net.corda.core.crypto.generateKeyPair
-import net.corda.core.identity.AnonymousParty
 import net.corda.core.identity.Party
 import net.corda.core.identity.PartyAndCertificate
 import net.corda.core.node.ServiceHub
@@ -19,10 +18,14 @@ import net.corda.core.serialization.OpaqueBytes
 import net.corda.core.transactions.TransactionBuilder
 import net.corda.core.utilities.*
 import net.corda.node.internal.NetworkMapInfo
-import net.corda.node.services.config.*
+import net.corda.node.services.config.CertChainPolicyConfig
+import net.corda.node.services.config.FullNodeConfiguration
+import net.corda.node.services.config.NodeConfiguration
+import net.corda.node.services.config.VerifierType
 import net.corda.node.services.identity.InMemoryIdentityService
 import net.corda.nodeapi.User
 import net.corda.nodeapi.config.SSLConfiguration
+import net.corda.nodeapi.config.configureDevKeyAndTrustStores
 import net.corda.testing.node.MockServices
 import net.corda.testing.node.makeTestDataSourceProperties
 import org.bouncycastle.asn1.x500.X500Name
@@ -33,7 +36,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.security.KeyPair
 import java.security.PublicKey
-import java.security.cert.CertPath
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 

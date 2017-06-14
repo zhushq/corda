@@ -15,12 +15,12 @@ import net.corda.node.internal.Node
 import net.corda.node.serialization.NodeClock
 import net.corda.node.services.config.ConfigHelper
 import net.corda.node.services.config.FullNodeConfiguration
-import net.corda.node.services.config.configOf
-import net.corda.node.services.config.plus
 import net.corda.node.services.transactions.RaftValidatingNotaryService
 import net.corda.node.utilities.ServiceIdentityGenerator
 import net.corda.nodeapi.User
+import net.corda.nodeapi.config.configOf
 import net.corda.nodeapi.config.parseAs
+import net.corda.nodeapi.config.plus
 import net.corda.testing.MOCK_VERSION_INFO
 import net.corda.testing.driver.addressMustNotBeBoundFuture
 import net.corda.testing.getFreeLocalPorts

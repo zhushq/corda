@@ -1,7 +1,6 @@
-package net.corda.node.services.config
+package net.corda.nodeapi.config
 
 import com.typesafe.config.ConfigFactory
-import net.corda.nodeapi.config.toProperties
 import org.junit.Test
 import kotlin.test.assertEquals
 

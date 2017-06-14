@@ -15,13 +15,13 @@ import net.corda.core.random63BitValue
 import net.corda.core.transactions.LedgerTransaction
 import net.corda.core.utilities.ProcessUtilities
 import net.corda.core.utilities.loggerFor
-import net.corda.node.services.config.configureDevKeyAndTrustStores
 import net.corda.nodeapi.ArtemisMessagingComponent.Companion.NODE_USER
 import net.corda.nodeapi.ArtemisTcpTransport
 import net.corda.nodeapi.ConnectionDirection
 import net.corda.nodeapi.VerifierApi
-import net.corda.nodeapi.config.NodeSSLConfiguration
 import net.corda.nodeapi.config.SSLConfiguration
+import net.corda.nodeapi.config.configureDevKeyAndTrustStores
+import net.corda.testing.configureTestSSL
 import net.corda.testing.driver.*
 import org.apache.activemq.artemis.api.core.SimpleString
 import org.apache.activemq.artemis.api.core.client.ActiveMQClient
@@ -183,12 +183,7 @@ data class VerifierDriverDSL(
 
     private fun startVerificationRequestorInternal(name: X500Name, hostAndPort: HostAndPort): VerificationRequestorHandle {
         val baseDir = driverDSL.driverDirectory / name.commonName
-        val sslConfig = object : NodeSSLConfiguration {
-            override val baseDirectory = baseDir
-            override val keyStorePassword: String get() = "cordacadevpass"
-            override val trustStorePassword: String get() = "trustpass"
-        }
-        sslConfig.configureDevKeyAndTrustStores(name)
+        val sslConfig = configureTestSSL(name)
 
         val responseQueueNonce = random63BitValue()
         val responseAddress = "${VerifierApi.VERIFICATION_RESPONSES_QUEUE_NAME_PREFIX}.$responseQueueNonce"

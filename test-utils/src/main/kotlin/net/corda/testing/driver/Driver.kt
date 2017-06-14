@@ -27,7 +27,9 @@ import net.corda.node.utilities.ServiceIdentityGenerator
 import net.corda.nodeapi.ArtemisMessagingComponent
 import net.corda.nodeapi.User
 import net.corda.nodeapi.config.SSLConfiguration
+import net.corda.nodeapi.config.configOf
 import net.corda.nodeapi.config.parseAs
+import net.corda.nodeapi.config.plus
 import net.corda.nodeapi.internal.ShutdownHook
 import net.corda.nodeapi.internal.addShutdownHook
 import okhttp3.OkHttpClient

@@ -1,8 +1,10 @@
 package net.corda.node
 
+import com.typesafe.config.ConfigRenderOptions
 import joptsimple.OptionParser
 import joptsimple.util.EnumConverter
 import net.corda.core.div
+import net.corda.core.utilities.loggerFor
 import net.corda.node.services.config.ConfigHelper
 import net.corda.node.services.config.FullNodeConfiguration
 import net.corda.nodeapi.config.parseAs
@@ -65,7 +67,9 @@ data class CmdLineOptions(val baseDirectory: Path,
                           val isVersion: Boolean,
                           val noLocalShell: Boolean,
                           val sshdServer: Boolean) {
-    fun loadConfig() = ConfigHelper
-                .loadConfig(baseDirectory, configFile)
-                .parseAs<FullNodeConfiguration>()
+    fun loadConfig(): FullNodeConfiguration {
+        val config = ConfigHelper.loadConfig(baseDirectory, configFile)
+        loggerFor<CmdLineOptions>().info("Config:\n${config.root().render(ConfigRenderOptions.defaults())}")
+        return config.parseAs<FullNodeConfiguration>()
+    }
 }

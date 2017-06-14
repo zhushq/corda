@@ -229,7 +229,7 @@ class NodeConfigTest {
                 .withValue("basedir", ConfigValueFactory.fromAnyRef(baseDir.toString()))
                 .withFallback(ConfigFactory.parseResources("web-reference.conf"))
                 .resolve()
-        val webConfig = WebServerConfig(baseDir, nodeConfig)
+        val webConfig = nodeConfig.parseAs<WebServerConfig>()
 
         assertEquals(localPort(20001), webConfig.webAddress)
         assertEquals(localPort(10001), webConfig.p2pAddress)

@@ -2,6 +2,7 @@ package net.corda.nodeapi.config
 
 import com.google.common.net.HostAndPort
 import com.typesafe.config.Config
+import com.typesafe.config.ConfigFactory
 import com.typesafe.config.ConfigUtil
 import net.corda.core.noneOrSingle
 import org.bouncycastle.asn1.x500.X500Name
@@ -20,13 +21,11 @@ import kotlin.reflect.full.memberProperties
 import kotlin.reflect.full.primaryConstructor
 import kotlin.reflect.jvm.jvmErasure
 
+fun configOf(vararg pairs: Pair<String, Any?>): Config = ConfigFactory.parseMap(mapOf(*pairs))
+operator fun Config.plus(overrides: Map<String, Any?>): Config = ConfigFactory.parseMap(overrides).withFallback(this)
+
 @Target(AnnotationTarget.PROPERTY)
 annotation class OldConfig(val value: String)
-
-// TODO Move other config parsing to use parseAs and remove this
-operator fun <T> Config.getValue(receiver: Any, metadata: KProperty<*>): T {
-    return getValueInternal(metadata.name, metadata.returnType)
-}
 
 fun <T : Any> Config.parseAs(clazz: KClass<T>): T {
     require(clazz.isData) { "Only Kotlin data classes can be parsed" }
