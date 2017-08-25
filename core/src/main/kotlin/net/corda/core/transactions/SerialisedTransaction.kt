@@ -11,7 +11,7 @@ import net.corda.core.utilities.OpaqueBytes
 import java.nio.ByteBuffer
 
 @CordaSerializable
-data class SerialisedTransaction(val componentGroups: List<ComponentGroup?>, val privacySalt: PrivacySalt) {
+data class SerialisedTransaction(val componentGroups: List<ComponentGroup>, val privacySalt: PrivacySalt?) {
 
     /**
      * Builds whole Merkle tree for a transaction.
@@ -24,10 +24,10 @@ data class SerialisedTransaction(val componentGroups: List<ComponentGroup?>, val
      * see the user-guide section "Transaction tear-offs" to learn more about this topic.
      */
     val groupsMerkleRoots: List<SecureHash> get() = componentGroups.mapIndexed { index, it ->
-        if (it != null) {
+        if (it.components.isNotEmpty()) {
             serializedHash(
                     MerkleTree.getMerkleTree(it.components.mapIndexed { indexInternal, itInternal ->
-                        serializedHash(itInternal, privacySalt, index, indexInternal) }),
+                        serializedHash(itInternal, privacySalt, index, indexInternal) }).hash,
                     privacySalt,
                     index
             )
@@ -62,6 +62,12 @@ data class SerialisedTransaction(val componentGroups: List<ComponentGroup?>, val
     }
 
     private fun <T : Any> serializedHash(x: T): SecureHash = x.serialize(context = SerializationDefaults.P2P_CONTEXT.withoutReferences()).bytes.sha256()
+
+    // TODO: Use HMAC or even SHA256d Vs SHA256
+    // see https://crypto.stackexchange.com/questions/7895/weaknesses-in-sha-256d
+    // see https://crypto.stackexchange.com/questions/779/hashing-or-encrypting-twice-to-increase-security?rq=1
+    // see https://crypto.stackexchange.com/questions/9369/how-is-input-message-for-sha-2-padded
+    // see https://security.stackexchange.com/questions/79577/whats-the-difference-between-hmac-sha256key-data-and-sha256key-data
 
     /** The nonce is computed as Hash(privacySalt || index). */
     private fun computeNonce(privacySalt: PrivacySalt, index: Int) = (privacySalt.bytes + ByteBuffer.allocate(4).putInt(index).array()).sha256()
