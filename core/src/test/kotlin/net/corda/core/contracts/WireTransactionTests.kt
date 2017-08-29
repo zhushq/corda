@@ -29,7 +29,7 @@ class WireTransactionTests {
     private val privacySalt: PrivacySalt = PrivacySalt()
 
     @Test
-    fun `WireTransaction Merkle root computations`() {
+    fun `Merkle root computations`() {
         withTestSerialization {
             val inputGroup = ComponentGroup(inputs.map { it -> it.serialize() })
             val outputGroup = ComponentGroup(outputs.map { it -> it.serialize() })
@@ -42,15 +42,9 @@ class WireTransactionTests {
 
             val serTransaction1 = SerialisedTransaction(componentGroups = componentGroupsA, privacySalt = privacySalt)
             val serTransaction2 = SerialisedTransaction(componentGroups = componentGroupsA, privacySalt = privacySalt)
-            val serTransactionNoSalt1 = SerialisedTransaction(componentGroups = componentGroupsA, privacySalt = null)
-            val serTransactionNoSalt2 = SerialisedTransaction(componentGroups = componentGroupsA, privacySalt = null)
 
             // Merkle tree computation is deterministic.
             assertEquals(serTransaction1.merkleTree, serTransaction2.merkleTree)
-            assertEquals(serTransactionNoSalt1.merkleTree, serTransactionNoSalt2.merkleTree)
-
-            // Merkle tree inequality for the same transaction, but without privacySalt and nonces.
-            assertNotEquals(serTransaction1.merkleTree, serTransactionNoSalt1.merkleTree)
 
             // Full Merkle root is computed from the list of Merkle roots of each component group.
             assertEquals(serTransaction1.merkleTree, MerkleTree.getMerkleTree(listOf(privacySalt.sha256()) + serTransaction1.groupsMerkleRoots))
