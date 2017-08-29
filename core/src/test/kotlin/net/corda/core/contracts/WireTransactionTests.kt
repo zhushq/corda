@@ -2,11 +2,10 @@ package net.corda.core.contracts
 
 import net.corda.core.crypto.MerkleTree
 import net.corda.core.crypto.SecureHash
+import net.corda.core.crypto.sha256
 import net.corda.core.serialization.serialize
 import net.corda.core.transactions.ComponentGroup
 import net.corda.core.transactions.SerialisedTransaction
-import net.corda.core.transactions.serializedHash
-import net.corda.core.utilities.OpaqueBytes
 import net.corda.testing.*
 import net.corda.testing.contracts.DummyContract
 import org.junit.Test
@@ -54,13 +53,13 @@ class WireTransactionTests {
             assertNotEquals(serTransaction1.merkleTree, serTransactionNoSalt1.merkleTree)
 
             // Full Merkle root is computed from the list of Merkle roots of each component group.
-            assertEquals(serTransaction1.merkleTree, MerkleTree.getMerkleTree(serTransaction1.groupsMerkleRoots))
+            assertEquals(serTransaction1.merkleTree, MerkleTree.getMerkleTree(listOf(privacySalt.sha256()) + serTransaction1.groupsMerkleRoots))
 
             val componentGroupsEmptyOutputs = listOf(inputGroup, ComponentGroup(emptyList()), commandGroup, attachmentGroup, notaryGroup, timeWindowGroup)
             val serTransactionEmptyOutputs = SerialisedTransaction(componentGroups = componentGroupsEmptyOutputs, privacySalt = privacySalt)
 
-            // Because outputs list is empty, it should be zeroHash + nonce.
-            assertEquals(serializedHash(SecureHash.zeroHash, privacySalt, 1), serTransactionEmptyOutputs.groupsMerkleRoots[1])
+            // Because outputs list is empty, it should be zeroHash.
+            assertEquals(SecureHash.zeroHash, serTransactionEmptyOutputs.groupsMerkleRoots[1])
 
             // TXs differ in outputStates.
             assertNotEquals(serTransaction1.merkleTree, serTransactionEmptyOutputs.merkleTree)

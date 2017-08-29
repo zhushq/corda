@@ -16,7 +16,13 @@ data class SerialisedTransaction(val componentGroups: List<ComponentGroup>, val 
     /**
      * Builds whole Merkle tree for a transaction.
      */
-    val merkleTree: MerkleTree by lazy { MerkleTree.getMerkleTree(groupsMerkleRoots) }
+    val merkleTree: MerkleTree by lazy {
+        if (privacySalt != null) {
+            MerkleTree.getMerkleTree(listOf(privacySalt.sha256()) + groupsMerkleRoots)
+        } else {
+            MerkleTree.getMerkleTree(groupsMerkleRoots)
+        }
+    }
 
     /**
      * Calculate the hashes of the sub-components of the transaction, that are used to build its Merkle tree.
@@ -25,28 +31,15 @@ data class SerialisedTransaction(val componentGroups: List<ComponentGroup>, val 
      */
     val groupsMerkleRoots: List<SecureHash> get() = componentGroups.mapIndexed { index, it ->
         if (it.components.isNotEmpty()) {
-            serializedHash(
-                    MerkleTree.getMerkleTree(it.components.mapIndexed { indexInternal, itInternal ->
-                        serializedHash(itInternal, privacySalt, index, indexInternal) }).hash,
-                    privacySalt,
-                    index
-            )
+            MerkleTree.getMerkleTree(it.components.mapIndexed { indexInternal, itInternal ->
+                serializedHash(itInternal, privacySalt, index, indexInternal) }).hash
         } else {
-            serializedHash(SecureHash.zeroHash, privacySalt, index)
+            SecureHash.zeroHash
         }
     }
 
-    /**
-     * If a privacy salt is provided, the resulted output (Merkle-leaf) is computed as
-     * Hash(serializedObject || Hash(privacy_salt || obj_index_in_merkle_tree)).
-     */
-    private fun <T : Any> serializedHash(x: T, privacySalt: PrivacySalt?, index: Int): SecureHash {
-        return if (privacySalt != null)
-            serializedHash(x, computeNonce(privacySalt, index))
-        else
-            serializedHash(x)
-    }
-
+    // If a privacy salt is provided, the resulted output (Merkle-leaf) is computed as
+    // Hash(serializedObject || nonce), where nonce is computed from privacy salt and the path indices.
     private fun <T : Any> serializedHash(x: T, privacySalt: PrivacySalt?, index: Int, indexInternal: Int): SecureHash {
         return if (privacySalt != null)
             serializedHash(x, computeNonce(privacySalt, index, indexInternal))
@@ -69,10 +62,7 @@ data class SerialisedTransaction(val componentGroups: List<ComponentGroup>, val 
     // see https://crypto.stackexchange.com/questions/9369/how-is-input-message-for-sha-2-padded
     // see https://security.stackexchange.com/questions/79577/whats-the-difference-between-hmac-sha256key-data-and-sha256key-data
 
-    /** The nonce is computed as Hash(privacySalt || index). */
-    private fun computeNonce(privacySalt: PrivacySalt, index: Int) = (privacySalt.bytes + ByteBuffer.allocate(4).putInt(index).array()).sha256()
-
-    /** The nonce is computed as Hash(privacySalt || index || indexInternal). */
+    // The nonce is computed as Hash(privacySalt || index || indexInternal).
     private fun computeNonce(privacySalt: PrivacySalt, index: Int, indexInternal: Int) = (privacySalt.bytes + ByteBuffer.allocate(4).putInt(index).array() + ByteBuffer.allocate(4).putInt(indexInternal).array()).sha256()
 }
 
