@@ -1,6 +1,7 @@
 package net.corda.core.transactions
 
 import net.corda.core.contracts.*
+import net.corda.core.contracts.ComponentGroupEnum.*
 import net.corda.core.crypto.*
 import net.corda.core.identity.Party
 import net.corda.core.internal.Emoji
@@ -21,7 +22,7 @@ import java.util.function.Predicate
  * The identity of the transaction is the Merkle tree root of its components (see [MerkleTree]).
  */
 @CordaSerializable
-class WireTransaction(val componentGroups: List<ComponentGroup>, override val privacySalt: PrivacySalt = PrivacySalt()) : CoreTransaction(), TraversableTransaction {
+data class WireTransaction(val componentGroups: List<ComponentGroup>, override val privacySalt: PrivacySalt = PrivacySalt()) : CoreTransaction(), TraversableTransaction {
 
     @Deprecated("Required only in some unit-tests and for backwards compatibility purposes.", ReplaceWith("WireTransaction(val componentGroups: List<ComponentGroup>, override val privacySalt: PrivacySalt)"), DeprecationLevel.WARNING)
     constructor(inputs: List<StateRef>,
@@ -34,32 +35,42 @@ class WireTransaction(val componentGroups: List<ComponentGroup>, override val pr
     ) : this(createComponentGroups(inputs, outputs, commands, attachments, notary, timeWindow), privacySalt)
 
     /** Pointers to the input states on the ledger, identified by (tx identity hash, output index). */
-    override val inputs: List<StateRef> by lazy { componentGroups[0].components.map { SerializedBytes<StateRef>(it.bytes).deserialize() } }
+    override val inputs: List<StateRef> by lazy { componentGroups[INPUTS_GROUP.ordinal].components.map { SerializedBytes<StateRef>(it.bytes).deserialize() } }
 
-    override val outputs: List<TransactionState<ContractState>> by lazy { componentGroups[1].components.map { SerializedBytes<TransactionState<ContractState>>(it.bytes).deserialize() } }
+    override val outputs: List<TransactionState<ContractState>> by lazy { componentGroups[OUTPUTS_GROUP.ordinal].components.map { SerializedBytes<TransactionState<ContractState>>(it.bytes).deserialize() } }
 
     /** Ordered list of ([CommandData], [PublicKey]) pairs that instruct the contracts what to do. */
-    override val commands: List<Command<*>> by lazy { componentGroups[2].components.map { SerializedBytes<Command<*>>(it.bytes).deserialize() } }
+    override val commands: List<Command<*>> by lazy { componentGroups[COMMANDS_GROUP.ordinal].components.map { SerializedBytes<Command<*>>(it.bytes).deserialize() } }
 
     /** Hashes of the ZIP/JAR files that are needed to interpret the contents of this wire transaction. */
-    override val attachments: List<SecureHash> by lazy { componentGroups[3].components.map { SerializedBytes<SecureHash>(it.bytes).deserialize() } }
+    override val attachments: List<SecureHash> by lazy { componentGroups[ATTACHMENTS_GROUP.ordinal].components.map { SerializedBytes<SecureHash>(it.bytes).deserialize() } }
 
     override val notary: Party? by lazy {
-        val notaries: List<Party> = componentGroups[4].components.map { SerializedBytes<Party>(it.bytes).deserialize() }
+        val notaries: List<Party> = componentGroups[NOTARY_GROUP.ordinal].components.map { SerializedBytes<Party>(it.bytes).deserialize() }
         check(notaries.size <= 1) { "Invalid Transaction. More than 1 notary party detected." }
         if (notaries.isNotEmpty()) notaries[0] else null
     }
     override val timeWindow: TimeWindow? by lazy {
-        val timeWindows: List<TimeWindow> = componentGroups[5].components.map { SerializedBytes<TimeWindow>(it.bytes).deserialize() }
+        val timeWindows: List<TimeWindow> = componentGroups[TIMEWINDOW_GROUP.ordinal].components.map { SerializedBytes<TimeWindow>(it.bytes).deserialize() }
         check(timeWindows.size <= 1) { "Invalid Transaction. More than 1 time-window detected." }
         if (timeWindows.isNotEmpty()) timeWindows[0] else null
     }
 
     init {
+        checkAllFields()
         checkBaseInvariants()
         check(inputs.isNotEmpty() || outputs.isNotEmpty()) { "A transaction must contain at least one input or output state" }
         check(commands.isNotEmpty()) { "A transaction must contain at least one command" }
         if (timeWindow != null) check(notary != null) { "Transactions with time-windows must be notarised" }
+    }
+
+    // Check if after deserialisation all fields are casted to the correct type.
+    private fun checkAllFields() {
+        try {
+            inputs; outputs; commands; attachments; notary; timeWindow
+        } catch (cce: ClassCastException) {
+            throw ClassCastException("Malformed WireTransaction, one of the components cannot be deserialised - ${cce.message}")
+        }
     }
 
     /** The transaction id is represented by the root hash of Merkle tree over the transaction components. */
