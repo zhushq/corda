@@ -51,7 +51,22 @@ fun wireToCompatible(wireTransaction: WireTransaction): CompatibleTransaction {
     val outputs = ComponentGroup(wireTransaction.outputs.map { it.serialize() })
     val commands = ComponentGroup(wireTransaction.commands.map { it.serialize() })
     val attachments = ComponentGroup(wireTransaction.attachments.map { it.serialize() })
-    val notaries = ComponentGroup(if (wireTransaction.notary != null) listOf(wireTransaction.notary.serialize()) else emptyList())
-    val timeWindows = ComponentGroup(if (wireTransaction.timeWindow != null) listOf(wireTransaction.timeWindow.serialize()) else emptyList())
+    val notaries = ComponentGroup(if (wireTransaction.notary != null) listOf(wireTransaction.notary!!.serialize()) else emptyList())
+    val timeWindows = ComponentGroup(if (wireTransaction.timeWindow != null) listOf(wireTransaction.timeWindow!!.serialize()) else emptyList())
     return CompatibleTransaction(listOf(inputs, outputs, commands, attachments, notaries, timeWindows), wireTransaction.privacySalt)
+}
+
+fun createComponentGroups(inputs: List<StateRef>,
+                          outputs: List<TransactionState<ContractState>>,
+                          commands: List<Command<*>>,
+                          attachments: List<SecureHash>,
+                          notary: Party?,
+                          timeWindow: TimeWindow?): List<ComponentGroup> {
+    val inputsGroup = ComponentGroup(inputs.map { it.serialize() })
+    val outputsGroup = ComponentGroup(outputs.map { it.serialize() })
+    val commandsGroup = ComponentGroup(commands.map { it.serialize() })
+    val attachmentsGroup = ComponentGroup(attachments.map { it.serialize() })
+    val notaryGroup = ComponentGroup(if (notary != null) listOf(notary.serialize()) else emptyList())
+    val timeWindowGroup = ComponentGroup(if (timeWindow != null) listOf(timeWindow.serialize()) else emptyList())
+    return listOf<ComponentGroup>(inputsGroup, outputsGroup, commandsGroup, attachmentsGroup, notaryGroup, timeWindowGroup)
 }

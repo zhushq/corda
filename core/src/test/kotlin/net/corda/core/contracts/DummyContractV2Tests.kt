@@ -5,6 +5,7 @@ import net.corda.testing.contracts.DummyContractV2
 import net.corda.core.crypto.SecureHash
 import net.corda.testing.ALICE
 import net.corda.testing.DUMMY_NOTARY
+import net.corda.testing.TestDependencyInjectionBase
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -12,7 +13,7 @@ import kotlin.test.assertTrue
 /**
  * Tests for the version 2 dummy contract, to cover ensuring upgrade transactions are built correctly.
  */
-class DummyContractV2Tests {
+class DummyContractV2Tests : TestDependencyInjectionBase() {
     @Test
     fun `upgrade from v1`() {
         val contractUpgrade = DummyContractV2()

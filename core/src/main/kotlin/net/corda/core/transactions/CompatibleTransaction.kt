@@ -1,11 +1,11 @@
 package net.corda.core.transactions
 
-import com.google.common.annotations.VisibleForTesting
 import net.corda.core.contracts.PrivacySalt
 import net.corda.core.crypto.MerkleTree
 import net.corda.core.crypto.SecureHash
 import net.corda.core.crypto.serializedHash
 import net.corda.core.crypto.sha256
+import net.corda.core.internal.VisibleForTesting
 import net.corda.core.serialization.CordaSerializable
 import net.corda.core.utilities.OpaqueBytes
 
@@ -39,4 +39,4 @@ data class CompatibleTransaction(val componentGroups: List<ComponentGroup>, val 
  * a group for all attachments (if there are any) etc.
  */
 @CordaSerializable
-data class ComponentGroup(val components: List<OpaqueBytes>)
+data class ComponentGroup2(val components: List<OpaqueBytes>)

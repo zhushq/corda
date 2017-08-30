@@ -7,6 +7,7 @@ import net.corda.core.identity.Party
 import net.corda.core.internal.FlowStateMachine
 import net.corda.core.node.ServiceHub
 import net.corda.core.node.services.KeyManagementService
+import net.corda.core.serialization.serialize
 import java.security.KeyPair
 import java.security.PublicKey
 import java.time.Duration
@@ -70,8 +71,16 @@ open class TransactionBuilder(
     }
     // DOCEND 1
 
-    fun toWireTransaction() = WireTransaction(ArrayList(inputs), ArrayList(attachments),
-            ArrayList(outputs), ArrayList(commands), notary, window, privacySalt)
+    fun toWireTransaction() = WireTransaction(
+            listOf(
+                    ComponentGroup(inputs.map { it.serialize() }),
+                    ComponentGroup(outputs.map { it.serialize() }),
+                    ComponentGroup(commands.map { it.serialize() }),
+                    ComponentGroup(attachments.map { it.serialize() }),
+                    ComponentGroup(if (notary != null) listOf(notary!!.serialize()) else emptyList()),
+                    ComponentGroup(if (window != null) listOf(window!!.serialize()) else emptyList())
+            ),
+            privacySalt)
 
     @Throws(AttachmentResolutionException::class, TransactionResolutionException::class)
     fun toLedgerTransaction(services: ServiceHub) = toWireTransaction().toLedgerTransaction(services)

@@ -1,14 +1,16 @@
 package net.corda.core.transactions
 
 import net.corda.core.contracts.*
-import net.corda.core.crypto.MerkleTree
-import net.corda.core.crypto.SecureHash
-import net.corda.core.crypto.TransactionSignature
-import net.corda.core.crypto.keys
+import net.corda.core.crypto.*
 import net.corda.core.identity.Party
 import net.corda.core.internal.Emoji
+import net.corda.core.internal.VisibleForTesting
 import net.corda.core.node.ServicesForResolution
 import net.corda.core.serialization.CordaSerializable
+import net.corda.core.serialization.SerializedBytes
+import net.corda.core.serialization.deserialize
+import net.corda.core.utilities.OpaqueBytes
+import net.corda.core.utilities.createComponentGroups
 import java.security.PublicKey
 import java.security.SignatureException
 import java.util.function.Predicate
@@ -19,18 +21,40 @@ import java.util.function.Predicate
  * The identity of the transaction is the Merkle tree root of its components (see [MerkleTree]).
  */
 @CordaSerializable
-data class WireTransaction(
-        /** Pointers to the input states on the ledger, identified by (tx identity hash, output index). */
-        override val inputs: List<StateRef>,
-        /** Hashes of the ZIP/JAR files that are needed to interpret the contents of this wire transaction. */
-        override val attachments: List<SecureHash>,
-        override val outputs: List<TransactionState<ContractState>>,
-        /** Ordered list of ([CommandData], [PublicKey]) pairs that instruct the contracts what to do. */
-        override val commands: List<Command<*>>,
-        override val notary: Party?,
-        override val timeWindow: TimeWindow?,
-        override val privacySalt: PrivacySalt = PrivacySalt()
-) : CoreTransaction(), TraversableTransaction {
+class WireTransaction(val componentGroups: List<ComponentGroup>, override val privacySalt: PrivacySalt = PrivacySalt()) : CoreTransaction(), TraversableTransaction {
+
+    @Deprecated("Required only in some unit-tests and for backwards compatibility purposes.", ReplaceWith("WireTransaction(val componentGroups: List<ComponentGroup>, override val privacySalt: PrivacySalt)"), DeprecationLevel.WARNING)
+    constructor(inputs: List<StateRef>,
+                attachments: List<SecureHash>,
+                outputs: List<TransactionState<ContractState>>,
+                commands: List<Command<*>>,
+                notary: Party?,
+                timeWindow: TimeWindow?,
+                privacySalt: PrivacySalt = PrivacySalt()
+    ) : this(createComponentGroups(inputs, outputs, commands, attachments, notary, timeWindow), privacySalt)
+
+    /** Pointers to the input states on the ledger, identified by (tx identity hash, output index). */
+    override val inputs: List<StateRef> by lazy { componentGroups[0].components.map { SerializedBytes<StateRef>(it.bytes).deserialize() } }
+
+    override val outputs: List<TransactionState<ContractState>> by lazy { componentGroups[1].components.map { SerializedBytes<TransactionState<ContractState>>(it.bytes).deserialize() } }
+
+    /** Ordered list of ([CommandData], [PublicKey]) pairs that instruct the contracts what to do. */
+    override val commands: List<Command<*>> by lazy { componentGroups[2].components.map { SerializedBytes<Command<*>>(it.bytes).deserialize() } }
+
+    /** Hashes of the ZIP/JAR files that are needed to interpret the contents of this wire transaction. */
+    override val attachments: List<SecureHash> by lazy { componentGroups[3].components.map { SerializedBytes<SecureHash>(it.bytes).deserialize() } }
+
+    override val notary: Party? by lazy {
+        val notaries: List<Party> = componentGroups[4].components.map { SerializedBytes<Party>(it.bytes).deserialize() }
+        check(notaries.size <= 1) { "Invalid Transaction. More than 1 notary party detected." }
+        if (notaries.isNotEmpty()) notaries[0] else null
+    }
+    override val timeWindow: TimeWindow? by lazy {
+        val timeWindows: List<TimeWindow> = componentGroups[5].components.map { SerializedBytes<TimeWindow>(it.bytes).deserialize() }
+        check(timeWindows.size <= 1) { "Invalid Transaction. More than 1 time-window detected." }
+        if (timeWindows.isNotEmpty()) timeWindows[0] else null
+    }
+
     init {
         checkBaseInvariants()
         check(inputs.isNotEmpty() || outputs.isNotEmpty()) { "A transaction must contain at least one input or output state" }
@@ -46,7 +70,7 @@ data class WireTransaction(
         val commandKeys = commands.flatMap { it.signers }.toSet()
         // TODO: prevent notary field from being set if there are no inputs and no timestamp
         return if (notary != null && (inputs.isNotEmpty() || timeWindow != null)) {
-            commandKeys + notary.owningKey
+            commandKeys + notary!!.owningKey
         } else {
             commandKeys
         }
@@ -104,7 +128,22 @@ data class WireTransaction(
     /**
      * Builds whole Merkle tree for a transaction.
      */
-    val merkleTree: MerkleTree by lazy { MerkleTree.getMerkleTree(availableComponentHashes) }
+    val merkleTree: MerkleTree by lazy { MerkleTree.getMerkleTree(listOf(privacySalt.sha256()) + groupsMerkleRoots) }
+
+    /**
+     * Calculate the hashes of the sub-components of the transaction, that are used to build its Merkle tree.
+     * The root of the tree is the transaction identifier. The tree structure is helpful for privacy, please
+     * see the user-guide section "Transaction tear-offs" to learn more about this topic.
+     */
+    @VisibleForTesting
+    val groupsMerkleRoots: List<SecureHash> get() = componentGroups.mapIndexed { index, it ->
+        if (it.components.isNotEmpty()) {
+            MerkleTree.getMerkleTree(it.components.mapIndexed { indexInternal, itInternal ->
+                serializedHash(itInternal, privacySalt, index, indexInternal) }).hash
+        } else {
+            SecureHash.zeroHash
+        }
+    }
 
     /**
      * Checks that the given signature matches one of the commands and that it is a correct signature over the tx.
@@ -127,3 +166,11 @@ data class WireTransaction(
         return buf.toString()
     }
 }
+
+/**
+ * A ComponentGroup is used to store the full list of transaction components of the same type in serialised form.
+ * Practically, a group per component type of a transaction is required; thus, there will be a group for input states,
+ * a group for all attachments (if there are any) etc.
+ */
+@CordaSerializable
+data class ComponentGroup(val components: List<OpaqueBytes>)
