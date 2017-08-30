@@ -10,7 +10,7 @@ import net.corda.core.serialization.CordaSerializable
 import net.corda.core.utilities.OpaqueBytes
 
 @CordaSerializable
-data class SerialisedTransaction(val componentGroups: List<ComponentGroup>, val privacySalt: PrivacySalt) {
+data class CompatibleTransaction(val componentGroups: List<ComponentGroup>, val privacySalt: PrivacySalt) {
 
     /**
      * Builds whole Merkle tree for a transaction.

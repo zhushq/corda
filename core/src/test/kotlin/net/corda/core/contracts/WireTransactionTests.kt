@@ -5,7 +5,7 @@ import net.corda.core.crypto.SecureHash
 import net.corda.core.crypto.sha256
 import net.corda.core.serialization.serialize
 import net.corda.core.transactions.ComponentGroup
-import net.corda.core.transactions.SerialisedTransaction
+import net.corda.core.transactions.CompatibleTransaction
 import net.corda.testing.*
 import net.corda.testing.contracts.DummyContract
 import org.junit.Test
@@ -40,55 +40,55 @@ class WireTransactionTests {
 
             val componentGroupsA = listOf(inputGroup, outputGroup, commandGroup, attachmentGroup, notaryGroup, timeWindowGroup)
 
-            val serTransaction1 = SerialisedTransaction(componentGroups = componentGroupsA, privacySalt = privacySalt)
-            val serTransaction2 = SerialisedTransaction(componentGroups = componentGroupsA, privacySalt = privacySalt)
+            val compatibleTransaction1 = CompatibleTransaction(componentGroups = componentGroupsA, privacySalt = privacySalt)
+            val compatibleTransaction2 = CompatibleTransaction(componentGroups = componentGroupsA, privacySalt = privacySalt)
 
             // Merkle tree computation is deterministic.
-            assertEquals(serTransaction1.merkleTree, serTransaction2.merkleTree)
+            assertEquals(compatibleTransaction1.merkleTree, compatibleTransaction2.merkleTree)
 
             // Full Merkle root is computed from the list of Merkle roots of each component group.
-            assertEquals(serTransaction1.merkleTree, MerkleTree.getMerkleTree(listOf(privacySalt.sha256()) + serTransaction1.groupsMerkleRoots))
+            assertEquals(compatibleTransaction1.merkleTree, MerkleTree.getMerkleTree(listOf(privacySalt.sha256()) + compatibleTransaction1.groupsMerkleRoots))
 
             val componentGroupsEmptyOutputs = listOf(inputGroup, ComponentGroup(emptyList()), commandGroup, attachmentGroup, notaryGroup, timeWindowGroup)
-            val serTransactionEmptyOutputs = SerialisedTransaction(componentGroups = componentGroupsEmptyOutputs, privacySalt = privacySalt)
+            val compatibleTransactionEmptyOutputs = CompatibleTransaction(componentGroups = componentGroupsEmptyOutputs, privacySalt = privacySalt)
 
             // Because outputs list is empty, it should be zeroHash.
-            assertEquals(SecureHash.zeroHash, serTransactionEmptyOutputs.groupsMerkleRoots[1])
+            assertEquals(SecureHash.zeroHash, compatibleTransactionEmptyOutputs.groupsMerkleRoots[1])
 
             // TXs differ in outputStates.
-            assertNotEquals(serTransaction1.merkleTree, serTransactionEmptyOutputs.merkleTree)
+            assertNotEquals(compatibleTransaction1.merkleTree, compatibleTransactionEmptyOutputs.merkleTree)
 
             val inputsShuffled = listOf(stateRef2, stateRef1, stateRef3)
             val inputShuffledGroup = ComponentGroup(inputsShuffled.map { it -> it.serialize() })
             val componentGroupsB = listOf(inputShuffledGroup, outputGroup, commandGroup, attachmentGroup, notaryGroup, timeWindowGroup)
-            val serTransaction1ShuffledInputs = SerialisedTransaction(componentGroups = componentGroupsB, privacySalt = privacySalt)
+            val compatibleTransaction1ShuffledInputs = CompatibleTransaction(componentGroups = componentGroupsB, privacySalt = privacySalt)
 
             // Ordering inside a component group matters.
-            assertNotEquals(serTransaction1, serTransaction1ShuffledInputs)
-            assertNotEquals(serTransaction1.merkleTree, serTransaction1ShuffledInputs.merkleTree)
+            assertNotEquals(compatibleTransaction1, compatibleTransaction1ShuffledInputs)
+            assertNotEquals(compatibleTransaction1.merkleTree, compatibleTransaction1ShuffledInputs.merkleTree)
             // Inputs group Merkle root is not equal.
-            assertNotEquals(serTransaction1.groupsMerkleRoots[0], serTransaction1ShuffledInputs.groupsMerkleRoots[0])
+            assertNotEquals(compatibleTransaction1.groupsMerkleRoots[0], compatibleTransaction1ShuffledInputs.groupsMerkleRoots[0])
             // But outputs group Merkle leaf (and the rest) remained the same.
-            assertEquals(serTransaction1.groupsMerkleRoots[1], serTransaction1ShuffledInputs.groupsMerkleRoots[1])
-            assertEquals(serTransaction1.groupsMerkleRoots[3], serTransaction1ShuffledInputs.groupsMerkleRoots[3])
+            assertEquals(compatibleTransaction1.groupsMerkleRoots[1], compatibleTransaction1ShuffledInputs.groupsMerkleRoots[1])
+            assertEquals(compatibleTransaction1.groupsMerkleRoots[3], compatibleTransaction1ShuffledInputs.groupsMerkleRoots[3])
 
             val shuffledComponentGroupsA = listOf(outputGroup, inputGroup, commandGroup, attachmentGroup, notaryGroup, timeWindowGroup)
-            val serTransaction1ShuffledGroups = SerialisedTransaction(componentGroups = shuffledComponentGroupsA, privacySalt = privacySalt)
+            val compatibleTransaction1ShuffledGroups = CompatibleTransaction(componentGroups = shuffledComponentGroupsA, privacySalt = privacySalt)
 
             // Ordering in the group leafs matters. We should keep a standardised sequence for backwards/forwards compatibility.
             // For instance inputs should always be the first leaf, then outputs, the commands etc.
-            assertNotEquals(serTransaction1, serTransaction1ShuffledGroups)
-            assertNotEquals(serTransaction1.merkleTree, serTransaction1ShuffledGroups.merkleTree)
+            assertNotEquals(compatibleTransaction1, compatibleTransaction1ShuffledGroups)
+            assertNotEquals(compatibleTransaction1.merkleTree, compatibleTransaction1ShuffledGroups.merkleTree)
             // First leaf (Merkle root) is not equal.
-            assertNotEquals(serTransaction1.groupsMerkleRoots[0], serTransaction1ShuffledGroups.groupsMerkleRoots[0])
+            assertNotEquals(compatibleTransaction1.groupsMerkleRoots[0], compatibleTransaction1ShuffledGroups.groupsMerkleRoots[0])
             // Second leaf (Merkle leaf) is not equal.
-            assertNotEquals(serTransaction1.groupsMerkleRoots[1], serTransaction1ShuffledGroups.groupsMerkleRoots[1])
+            assertNotEquals(compatibleTransaction1.groupsMerkleRoots[1], compatibleTransaction1ShuffledGroups.groupsMerkleRoots[1])
             // Actually, because the index participate in nonces, swapping group-leafs changes the Merkle roots.
-            assertNotEquals(serTransaction1.groupsMerkleRoots[0], serTransaction1ShuffledGroups.groupsMerkleRoots[1])
-            assertNotEquals(serTransaction1.groupsMerkleRoots[1], serTransaction1ShuffledGroups.groupsMerkleRoots[0])
+            assertNotEquals(compatibleTransaction1.groupsMerkleRoots[0], compatibleTransaction1ShuffledGroups.groupsMerkleRoots[1])
+            assertNotEquals(compatibleTransaction1.groupsMerkleRoots[1], compatibleTransaction1ShuffledGroups.groupsMerkleRoots[0])
             // However third leaf (and the rest) didn't change position, so they remained unchanged.
-            assertEquals(serTransaction1.groupsMerkleRoots[2], serTransaction1ShuffledGroups.groupsMerkleRoots[2])
-            assertEquals(serTransaction1.groupsMerkleRoots[4], serTransaction1ShuffledGroups.groupsMerkleRoots[4])
+            assertEquals(compatibleTransaction1.groupsMerkleRoots[2], compatibleTransaction1ShuffledGroups.groupsMerkleRoots[2])
+            assertEquals(compatibleTransaction1.groupsMerkleRoots[4], compatibleTransaction1ShuffledGroups.groupsMerkleRoots[4])
         }
     }
 }
