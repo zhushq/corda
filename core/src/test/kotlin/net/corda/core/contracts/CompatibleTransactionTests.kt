@@ -13,7 +13,7 @@ import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
-class WireTransactionTests {
+class CompatibleTransactionTests {
 
     private val dummyOutState = TransactionState(DummyContract.SingleOwnerState(0, ALICE), DUMMY_NOTARY)
     private val stateRef1 = StateRef(SecureHash.randomSHA256(), 0)
@@ -75,7 +75,7 @@ class WireTransactionTests {
             val shuffledComponentGroupsA = listOf(outputGroup, inputGroup, commandGroup, attachmentGroup, notaryGroup, timeWindowGroup)
             val compatibleTransaction1ShuffledGroups = CompatibleTransaction(componentGroups = shuffledComponentGroupsA, privacySalt = privacySalt)
 
-            // Ordering in the group leafs matters. We should keep a standardised sequence for backwards/forwards compatibility.
+            // Group leaves ordering matters. We should keep a standardised sequence for backwards/forwards compatibility.
             // For instance inputs should always be the first leaf, then outputs, the commands etc.
             assertNotEquals(compatibleTransaction1, compatibleTransaction1ShuffledGroups)
             assertNotEquals(compatibleTransaction1.merkleTree, compatibleTransaction1ShuffledGroups.merkleTree)
@@ -83,7 +83,7 @@ class WireTransactionTests {
             assertNotEquals(compatibleTransaction1.groupsMerkleRoots[0], compatibleTransaction1ShuffledGroups.groupsMerkleRoots[0])
             // Second leaf (Merkle leaf) is not equal.
             assertNotEquals(compatibleTransaction1.groupsMerkleRoots[1], compatibleTransaction1ShuffledGroups.groupsMerkleRoots[1])
-            // Actually, because the index participate in nonces, swapping group-leafs changes the Merkle roots.
+            // Actually, because the index participate in nonces, swapping group-leaves changes the Merkle roots.
             assertNotEquals(compatibleTransaction1.groupsMerkleRoots[0], compatibleTransaction1ShuffledGroups.groupsMerkleRoots[1])
             assertNotEquals(compatibleTransaction1.groupsMerkleRoots[1], compatibleTransaction1ShuffledGroups.groupsMerkleRoots[0])
             // However third leaf (and the rest) didn't change position, so they remained unchanged.
