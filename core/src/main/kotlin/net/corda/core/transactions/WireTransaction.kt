@@ -20,6 +20,21 @@ import java.util.function.Predicate
  * A transaction ready for serialisation, without any signatures attached. A WireTransaction is usually wrapped
  * by a [SignedTransaction] that carries the signatures over this payload.
  * The identity of the transaction is the Merkle tree root of its components (see [MerkleTree]).
+ *
+ * A few notes about backwards compatibility:
+ * A wire transaction can be backwards compatible, in the sense that if an old client receives a [componentGroups] with
+ * more elements than expected, it will normally deserialise the required objects and omit any checks in the optional
+ * new fields. Moreover, because Merkle tree is constructed from the received list of [ComponentGroup], which internally
+ * deals with bytes, any client can compute the Merkle tree and on the same time relay a [WireTransaction] object even
+ * if she is unable to read some of the "optional" component types. We stress out that practically, a new type of
+ * [WireTransaction] should only be considered compatible if and only if the following rules apply:
+ * <p><ul>
+ * <li>Component-type ordering is fixed (eg. inputs, then outputs, then commands etc, see [ComponentGroupEnum] for the actual ordering).
+ * <li>Removing a component-type that existed in older wire transaction types is not allowed, because it will affect the Merkle tree structure.
+ * <li>Changing the order of existing component types is also not allowed, for the same reason.
+ * <li>New component types must be added at the end of the list of [ComponentGroup] and update the [ComponentGroupEnum] with the new type. After a component is added, its ordinal must never change.
+ * <li>A new component type should always be an "optional values", in the sense that lack of its visibility does not change the contract logic and details. An example could be a transaction summary or some statistics.
+ * </ul></p>
  */
 @CordaSerializable
 data class WireTransaction(val componentGroups: List<ComponentGroup>, override val privacySalt: PrivacySalt = PrivacySalt()) : CoreTransaction(), TraversableTransaction {
@@ -57,7 +72,7 @@ data class WireTransaction(val componentGroups: List<ComponentGroup>, override v
     }
 
     init {
-        checkAllFieldsDeserialised() // This check is here to group deserialization errors, before any other check.
+        checkAllFieldsDeserialised() // This check is here to group and get meaningful deserialization errors, before any other check or usage.
         checkBaseInvariants()
         check(inputs.isNotEmpty() || outputs.isNotEmpty()) { "A transaction must contain at least one input or output state" }
         check(commands.isNotEmpty()) { "A transaction must contain at least one command" }
