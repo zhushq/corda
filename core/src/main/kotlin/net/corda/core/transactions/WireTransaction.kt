@@ -57,15 +57,16 @@ data class WireTransaction(val componentGroups: List<ComponentGroup>, override v
     }
 
     init {
-        checkAllFields()
+        checkAllFieldsDeserialised() // This check is here to group deserialization errors, before any other check.
         checkBaseInvariants()
         check(inputs.isNotEmpty() || outputs.isNotEmpty()) { "A transaction must contain at least one input or output state" }
         check(commands.isNotEmpty()) { "A transaction must contain at least one command" }
         if (timeWindow != null) check(notary != null) { "Transactions with time-windows must be notarised" }
     }
 
-    // Check if after deserialisation all fields are casted to the correct type.
-    private fun checkAllFields() {
+    // Check, by lazy accessing each component, if all of them can be deserialised.
+    // TODO add each new component in this function.
+    private fun checkAllFieldsDeserialised() {
         try {
             inputs; outputs; commands; attachments; notary; timeWindow
         } catch (cce: ClassCastException) {
@@ -183,5 +184,8 @@ data class WireTransaction(val componentGroups: List<ComponentGroup>, override v
  * Practically, a group per component type of a transaction is required; thus, there will be a group for input states,
  * a group for all attachments (if there are any) etc.
  */
+// TODO: Change to ComponentGroup(val enumGroup: ComponentGroupEnum, val components: List<OpaqueBytes>) when enum
+//       evolvability is supported, actually just adding new types. Note that reordering or type removal support might
+//       not work due to ordering requirements in Merkle tree constructions.
 @CordaSerializable
 data class ComponentGroup(val components: List<OpaqueBytes>)

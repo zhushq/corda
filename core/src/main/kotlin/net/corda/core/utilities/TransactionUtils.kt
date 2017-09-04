@@ -56,6 +56,10 @@ fun wireToCompatible(wireTransaction: WireTransaction): CompatibleTransaction {
     return CompatibleTransaction(listOf(inputs, outputs, commands, attachments, notaries, timeWindows), wireTransaction.privacySalt)
 }
 
+/**
+ * Creating list of [ComponentGroup] used in one of the constructors of [WireTransaction] required
+ * for backwards compatibility purposes.
+ */
 fun createComponentGroups(inputs: List<StateRef>,
                           outputs: List<TransactionState<ContractState>>,
                           commands: List<Command<*>>,
