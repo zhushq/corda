@@ -7,7 +7,6 @@ import net.corda.core.crypto.secureRandomBytes
 import net.corda.core.crypto.sha256
 import net.corda.core.serialization.serialize
 import net.corda.core.transactions.ComponentGroup
-import net.corda.core.transactions.CompatibleTransaction
 import net.corda.core.transactions.WireTransaction
 import net.corda.core.utilities.OpaqueBytes
 import net.corda.testing.*

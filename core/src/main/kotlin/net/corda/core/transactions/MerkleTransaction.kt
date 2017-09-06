@@ -4,33 +4,12 @@ import net.corda.core.contracts.*
 import net.corda.core.crypto.*
 import net.corda.core.identity.Party
 import net.corda.core.serialization.CordaSerializable
-import net.corda.core.serialization.SerializationFactory
+import net.corda.core.serialization.SerializedBytes
+import net.corda.core.serialization.deserialize
 import net.corda.core.serialization.serialize
-import java.nio.ByteBuffer
+import net.corda.core.utilities.OpaqueBytes
+import java.security.PublicKey
 import java.util.function.Predicate
-
-/**
- * If a privacy salt is provided, the resulted output (Merkle-leaf) is computed as
- * Hash(serializedObject || Hash(privacy_salt || obj_index_in_merkle_tree)).
- */
-fun <T : Any> serializedHash(x: T, privacySalt: PrivacySalt?, index: Int): SecureHash {
-    return if (privacySalt != null)
-        serializedHash(x, computeNonce(privacySalt, index))
-    else
-        serializedHash(x)
-}
-
-fun <T : Any> serializedHash(x: T, nonce: SecureHash): SecureHash {
-    return if (x !is PrivacySalt) // PrivacySalt is not required to have an accompanied nonce.
-        (x.serialize(context = SerializationFactory.defaultFactory.defaultContext.withoutReferences()).bytes + nonce.bytes).sha256()
-    else
-        serializedHash(x)
-}
-
-fun <T : Any> serializedHash(x: T): SecureHash = x.serialize(context = SerializationFactory.defaultFactory.defaultContext.withoutReferences()).bytes.sha256()
-
-/** The nonce is computed as Hash(privacySalt || index). */
-fun computeNonce(privacySalt: PrivacySalt, index: Int) = (privacySalt.bytes + ByteBuffer.allocate(4).putInt(index).array()).sha256()
 
 /**
  * Implemented by [WireTransaction] and [FilteredLeaves]. A TraversableTransaction allows you to iterate
@@ -61,28 +40,27 @@ interface TraversableTransaction {
     val privacySalt: PrivacySalt?
 
     /**
-     * Returns a flattened list of all the components that are present in the transaction, in the following order:
-     *
-     * - Each input that is present
-     * - Each attachment that is present
-     * - Each output that is present
-     * - Each command that is present
-     * - The notary [Party], if present
-     * - The time-window of the transaction, if present
-     * - The privacy salt required for nonces, always presented in [WireTransaction] and always null in [FilteredLeaves]
-     */
-    val availableComponents: List<Any>
-        // NOTE: if the order below is altered or components are added/removed in the future, one should also reflect
-        //      this change to the indexOffsets() method in WireTransaction.
+     * Returns a list of all the component groups that are present in the transaction, excluding the privacySalt,
+     * in the following order (which is the same with the order in [ComponentGroupEnum]:
+     * - list of each input that is present
+     * - list of each output that is present
+     * - list of each command that is present
+     * - list of each attachment that is present
+     * - The notary [Party], if present (list with one element)
+     * - The time-window of the transaction, if present (list with one element)
+    */
+    val availableComponentGroups: List<List<Any>>
         get() {
-            // We may want to specify our own behaviour on certain tx fields.
-            // Like if we include them at all, what to do with null values, if we treat list as one or not etc. for building
-            // torn-off transaction and id calculation.
-            val result = mutableListOf(inputs, attachments, outputs, commands).flatten().toMutableList()
-            notary?.let { result += it }
-            timeWindow?.let { result += it }
-            privacySalt?.let { result += it }
+            val result = mutableListOf(inputs, outputs, commands, attachments)
+            notary?.let { result += listOf(it) }
+            timeWindow?.let { result += listOf(it) }
             return result
+        }
+
+    /** Calculate the nonces of the sub-components of the transaction. */
+    val availableComponentNonces: List<List<SecureHash>>
+        get() = availableComponentGroups.mapIndexed { index, it -> it.mapIndexed {
+            indexInternal, itInternal -> serializedHash(itInternal, privacySalt, index, indexInternal) }
         }
 
     /**
@@ -90,7 +68,10 @@ interface TraversableTransaction {
      * The root of the tree is the transaction identifier. The tree structure is helpful for privacy, please
      * see the user-guide section "Transaction tear-offs" to learn more about this topic.
      */
-    val availableComponentHashes: List<SecureHash> get() = availableComponents.mapIndexed { index, it -> serializedHash(it, privacySalt, index) }
+    val availableComponentHashes: List<List<SecureHash>>
+        get() = availableComponentGroups.mapIndexed { index, it -> it.mapIndexed {
+            indexInternal, itInternal -> serializedHash(itInternal, availableComponentNonces[index][indexInternal]) }
+        }
 }
 
 /**
@@ -105,8 +86,7 @@ class FilteredLeaves(
         override val outputs: List<TransactionState<ContractState>>,
         override val commands: List<Command<*>>,
         override val notary: Party?,
-        override val timeWindow: TimeWindow?,
-        val nonces: List<SecureHash>
+        override val timeWindow: TimeWindow?
 ) : TraversableTransaction {
 
     /**
@@ -117,7 +97,7 @@ class FilteredLeaves(
     override val privacySalt: PrivacySalt? get() = null
 
     init {
-        require(availableComponents.size == nonces.size) { "Each visible component should be accompanied by a nonce." }
+        // require(availableComponents.size == nonces.size) { "Each visible component should be accompanied by a nonce." }
     }
 
     /**
@@ -130,11 +110,11 @@ class FilteredLeaves(
      * @returns false if no elements were matched on a structure or checkingFun returned false.
      */
     fun checkWithFun(checkingFun: (Any) -> Boolean): Boolean {
-        val checkList = availableComponents.map { checkingFun(it) }
+        val checkList = availableComponentGroups.flatten().map { checkingFun(it) }
         return (!checkList.isEmpty()) && checkList.all { it }
     }
 
-    override val availableComponentHashes: List<SecureHash> get() = availableComponents.mapIndexed { index, it -> serializedHash(it, nonces[index]) }
+    // override val availableComponentHashes: List<SecureHash> get() = availableComponents.mapIndexed { index, it -> serializedHash(it, nonces[index]) }
 }
 
 /**
@@ -146,86 +126,120 @@ class FilteredLeaves(
 @CordaSerializable
 class FilteredTransaction private constructor(
         val id: SecureHash,
-        val filteredLeaves: FilteredLeaves,
-        val partialMerkleTree: PartialMerkleTree
+        val filteredComponentGroups: List<FilteredComponentGroup>,
+        private val partialMerkleTree: PartialMerkleTree
 ) {
+
+    val filteredLeaves: FilteredLeaves = buildFilteredLeaves()
+
+    private fun buildFilteredLeaves(): FilteredLeaves {
+        try {
+            /** Pointers to the input states on the ledger, identified by (tx identity hash, output index). */
+            val inputs: List<StateRef> = filteredComponentGroups[ComponentGroupEnum.INPUTS_GROUP.ordinal].components.map { SerializedBytes<StateRef>(it.bytes).deserialize() }
+
+            val outputs: List<TransactionState<ContractState>> = filteredComponentGroups[ComponentGroupEnum.OUTPUTS_GROUP.ordinal].components.map { SerializedBytes<TransactionState<ContractState>>(it.bytes).deserialize() }
+
+            /** Ordered list of ([CommandData], [PublicKey]) pairs that instruct the contracts what to do. */
+            val commands: List<Command<*>> = filteredComponentGroups[ComponentGroupEnum.COMMANDS_GROUP.ordinal].components.map { SerializedBytes<Command<*>>(it.bytes).deserialize() }
+
+            /** Hashes of the ZIP/JAR files that are needed to interpret the contents of this wire transaction. */
+            val attachments: List<SecureHash> = filteredComponentGroups[ComponentGroupEnum.ATTACHMENTS_GROUP.ordinal].components.map { SerializedBytes<SecureHash>(it.bytes).deserialize() }
+
+            val notary: Party? = buildNotary()
+
+            val timeWindow: TimeWindow? = buildTimeWindow()
+
+            return FilteredLeaves(inputs, attachments, outputs, commands, notary, timeWindow)
+        } catch (cce: ClassCastException) {
+            throw ClassCastException("Malformed FilteredTransaction, one of the components cannot be deserialised - ${cce.message}")
+        }
+    }
+
+    private fun buildNotary(): Party? {
+        val notaries: List<Party> = filteredComponentGroups[ComponentGroupEnum.NOTARY_GROUP.ordinal].components.map { SerializedBytes<Party>(it.bytes).deserialize() }
+        check(notaries.size <= 1) { "Invalid Transaction. More than 1 notary party detected." }
+        return if (notaries.isNotEmpty()) notaries[0] else null
+    }
+
+    private fun buildTimeWindow(): TimeWindow? {
+        val timeWindows: List<TimeWindow> = filteredComponentGroups[ComponentGroupEnum.TIMEWINDOW_GROUP.ordinal].components.map { SerializedBytes<TimeWindow>(it.bytes).deserialize() }
+        check(timeWindows.size <= 1) { "Invalid Transaction. More than 1 time-window detected." }
+        return if (timeWindows.isNotEmpty()) timeWindows[0] else null
+    }
+
     companion object {
         /**
-         * Construction of filtered transaction with Partial Merkle Tree.
+         * Construction of filtered transaction with partial Merkle tree.
          * @param wtx WireTransaction to be filtered.
          * @param filtering filtering over the whole WireTransaction
          */
         @JvmStatic
-        fun buildMerkleTransaction(wtx: WireTransaction,
-                                   filtering: Predicate<Any>
+        fun buildFilteredTransaction(wtx: WireTransaction,
+                                     filtering: Predicate<Any>
         ): FilteredTransaction {
-            val filteredLeaves = filterWithFun(wtx, filtering)
+            val filteredComponentGroups = filterWithFun(wtx, filtering)
             val merkleTree = wtx.merkleTree
-            val pmt = PartialMerkleTree.build(merkleTree, filteredLeaves.availableComponentHashes)
-            return FilteredTransaction(merkleTree.hash, filteredLeaves, pmt)
+            val groupHashes = filteredComponentGroups.mapIndexed { index, it -> wtx.groupsMerkleRoots[index] }.filterIndexed { index, it -> filteredComponentGroups[index].components.isNotEmpty() }
+            val pmt = PartialMerkleTree.build(merkleTree, groupHashes)
+            return FilteredTransaction(merkleTree.hash, filteredComponentGroups, pmt)
         }
 
         /**
-         * Construction of partial transaction from WireTransaction based on filtering.
+         * Construction of partial transaction from [WireTransaction] based on filtering.
          * Note that list of nonces to be sent is updated on the fly, based on the index of the filtered tx component.
          * @param filtering filtering over the whole WireTransaction
          * @returns FilteredLeaves used in PartialMerkleTree calculation and verification.
          */
-        private fun filterWithFun(wtx: WireTransaction, filtering: Predicate<Any>): FilteredLeaves {
-            val nonces: MutableList<SecureHash> = mutableListOf()
-            val offsets = indexOffsets(wtx)
-            fun notNullFalseAndNoncesUpdate(elem: Any?, index: Int): Any? {
-                return if (elem == null || !filtering.test(elem)) {
-                    null
-                } else {
-                    nonces.add(computeNonce(wtx.privacySalt, index))
-                    elem
+        private fun filterWithFun(wtx: WireTransaction, filtering: Predicate<Any>): List<FilteredComponentGroup> {
+
+            val filteredSerialisedComponents: MutableMap<Int, MutableList<OpaqueBytes>> = hashMapOf()
+            val filteredComponentNonces: MutableMap<Int, MutableList<SecureHash>> = hashMapOf()
+            val filteredComponentHashes: MutableMap<Int, MutableList<SecureHash>> = hashMapOf() // Required for partial Merkle tree generation.
+
+            fun <T : Any> filter(t: T, index: Int, ordinal: Int) {
+                if (filtering.test(t)) {
+                    val group = filteredSerialisedComponents[ordinal]
+                    if (group == null) {
+                        filteredSerialisedComponents.put(ordinal, mutableListOf(t.serialize()))
+                        filteredComponentNonces.put(ordinal, mutableListOf(wtx.availableComponentNonces[ordinal][index]))
+                        filteredComponentHashes.put(ordinal, mutableListOf(wtx.availableComponentHashes[ordinal][index]))
+                    } else {
+                        group.add(t.serialize())
+                        filteredComponentNonces[ordinal]!!.add(wtx.availableComponentNonces[ordinal][index])
+                        filteredComponentHashes[ordinal]!!.add(wtx.availableComponentHashes[ordinal][index])
+                    }
                 }
             }
 
-            fun <T : Any> filterAndNoncesUpdate(t: T, index: Int): Boolean {
-                return if (filtering.test(t)) {
-                    nonces.add(computeNonce(wtx.privacySalt, index))
-                    true
-                } else {
-                    false
+            fun updateFilteredComponents() {
+                wtx.inputs.forEachIndexed { index, it -> filter(it, index, ComponentGroupEnum.INPUTS_GROUP.ordinal) }
+                wtx.outputs.forEachIndexed { index, it -> filter(it, index, ComponentGroupEnum.OUTPUTS_GROUP.ordinal) }
+                wtx.commands.forEachIndexed { index, it -> filter(it, index, ComponentGroupEnum.COMMANDS_GROUP.ordinal) }
+                wtx.attachments.forEachIndexed { index, it -> filter(it, index, ComponentGroupEnum.ATTACHMENTS_GROUP.ordinal) }
+                if (wtx.notary != null) filter(wtx.notary!!, 0, ComponentGroupEnum.NOTARY_GROUP.ordinal)
+                if (wtx.timeWindow != null) filter(wtx.timeWindow!!, 0, ComponentGroupEnum.TIMEWINDOW_GROUP.ordinal)
+            }
+
+            fun createPartialMerkleTree(ordinal: Int) = PartialMerkleTree.build(MerkleTree.getMerkleTree(wtx.availableComponentHashes[ordinal]), filteredComponentHashes[ordinal]!!)
+
+            fun createFilteredComponentGroups(): List<FilteredComponentGroup> {
+                updateFilteredComponents()
+                val filteredComponentGroups: MutableList<FilteredComponentGroup> = mutableListOf()
+                for (ordinal in 0 until ComponentGroupEnum.values().size) {
+                    val group = filteredSerialisedComponents[ordinal]
+                    if (group != null) {
+                        filteredComponentGroups.add(FilteredComponentGroup(group, filteredComponentNonces[ordinal]!!, createPartialMerkleTree(ordinal) ))
+                    } else {
+                        filteredComponentGroups.add(FilteredComponentGroup()) // Add an empty group.
+                    }
                 }
+                return filteredComponentGroups
             }
 
             // TODO: We should have a warning (require) if all leaves (excluding salt) are visible after filtering.
             //      Consider the above after refactoring FilteredTransaction to implement TraversableTransaction,
             //      so that a WireTransaction can be used when required to send a full tx (e.g. RatesFixFlow in Oracles).
-            return FilteredLeaves(
-                    wtx.inputs.filterIndexed { index, it -> filterAndNoncesUpdate(it, index) },
-                    wtx.attachments.filterIndexed { index, it -> filterAndNoncesUpdate(it, index + offsets[0]) },
-                    wtx.outputs.filterIndexed { index, it -> filterAndNoncesUpdate(it, index + offsets[1]) },
-                    wtx.commands.filterIndexed { index, it -> filterAndNoncesUpdate(it, index + offsets[2]) },
-                    notNullFalseAndNoncesUpdate(wtx.notary, offsets[3]) as Party?,
-                    notNullFalseAndNoncesUpdate(wtx.timeWindow, offsets[4]) as TimeWindow?,
-                    nonces
-            )
-        }
-
-        // We use index offsets, to get the actual leaf-index per transaction component required for nonce computation.
-        private fun indexOffsets(wtx: WireTransaction): List<Int> {
-            // There is no need to add an index offset for inputs, because they are the first components in the
-            // transaction format and it is always zero. Thus, offsets[0] corresponds to attachments,
-            // offsets[1] to outputs, offsets[2] to commands and so on.
-            val offsets = mutableListOf(wtx.inputs.size, wtx.inputs.size + wtx.attachments.size)
-            offsets.add(offsets.last() + wtx.outputs.size)
-            offsets.add(offsets.last() + wtx.commands.size)
-            if (wtx.notary != null) {
-                offsets.add(offsets.last() + 1)
-            } else {
-                offsets.add(offsets.last())
-            }
-            if (wtx.timeWindow != null) {
-                offsets.add(offsets.last() + 1)
-            } else {
-                offsets.add(offsets.last())
-            }
-            // No need to add offset for privacySalt as it doesn't require a nonce.
-            return offsets
+            return createFilteredComponentGroups()
         }
     }
 
@@ -234,9 +248,25 @@ class FilteredTransaction private constructor(
      */
     @Throws(MerkleTreeException::class)
     fun verify(): Boolean {
-        val hashes: List<SecureHash> = filteredLeaves.availableComponentHashes
+        val hashes: List<SecureHash> = filteredComponentGroups.map { it.nonces }.flatten()
         if (hashes.isEmpty())
             throw MerkleTreeException("Transaction without included leaves.")
-        return partialMerkleTree.verify(id, hashes)
+        val groupHashes = filteredComponentGroups.filter { it.partialMerkleTree != null }.map { it.partialMerkleTree!!.verify(it.partialMerkleTree.root, mutableListOf()) }
+        return partialMerkleTree.verify(id, groupHashes)
+    }
+}
+
+/**
+ * A FilteredComponentGroup is used to store the filtered list of transaction components of the same type in serialised form.
+ * This is similar to [ComponentGroup], but it also includes the corresponding nonce per component.
+ */
+@CordaSerializable
+data class FilteredComponentGroup(val components: List<OpaqueBytes>, val nonces: List<SecureHash>, val partialMerkleTree: PartialMerkleTree?) {
+
+    /** A helper constructor to create empty filtered component groups. */
+    constructor() : this(emptyList(), emptyList(), null)
+
+    init {
+        check(components.size == nonces.size) { "Size of components and nonces does not match" }
     }
 }

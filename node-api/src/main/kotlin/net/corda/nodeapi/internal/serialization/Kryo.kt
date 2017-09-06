@@ -254,7 +254,7 @@ object WireTransactionSerializer : Serializer<WireTransaction>() {
     @Suppress("UNCHECKED_CAST")
     override fun read(kryo: Kryo, input: Input, type: Class<WireTransaction>): WireTransaction {
         val componentGroups = kryo.readClassAndObject(input) as List<ComponentGroup>
-        val attachmentHashes: List<SecureHash> = componentGroups[3].components.map { SerializedBytes<SecureHash>(it.bytes).deserialize() }
+        val attachmentHashes: List<SecureHash> = componentGroups[ComponentGroupEnum.ATTACHMENTS_GROUP.ordinal].components.map { SerializedBytes<SecureHash>(it.bytes).deserialize() }
         // If we're deserialising in the sandbox context, we use our special attachments classloader.
         // Otherwise we just assume the code we need is on the classpath already.
         kryo.useClassLoader(attachmentsClassLoader(kryo, attachmentHashes) ?: javaClass.classLoader) {

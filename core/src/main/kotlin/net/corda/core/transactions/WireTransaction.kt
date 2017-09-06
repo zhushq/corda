@@ -10,8 +10,8 @@ import net.corda.core.node.ServicesForResolution
 import net.corda.core.serialization.CordaSerializable
 import net.corda.core.serialization.SerializedBytes
 import net.corda.core.serialization.deserialize
+import net.corda.core.serialization.serialize
 import net.corda.core.utilities.OpaqueBytes
-import net.corda.core.utilities.createComponentGroups
 import java.security.PublicKey
 import java.security.SignatureException
 import java.util.function.Predicate
@@ -33,7 +33,7 @@ import java.util.function.Predicate
  * <li>Removing a component-type that existed in older wire transaction types is not allowed, because it will affect the Merkle tree structure.
  * <li>Changing the order of existing component types is also not allowed, for the same reason.
  * <li>New component types must be added at the end of the list of [ComponentGroup] and update the [ComponentGroupEnum] with the new type. After a component is added, its ordinal must never change.
- * <li>A new component type should always be an "optional values", in the sense that lack of its visibility does not change the contract logic and details. An example could be a transaction summary or some statistics.
+ * <li>A new component type should always be an "optional value", in the sense that lack of its visibility does not change the transaction and contract logic and details. An example of "optional" components could be a transaction summary or some statistics.
  * </ul></p>
  */
 @CordaSerializable
@@ -79,8 +79,8 @@ data class WireTransaction(val componentGroups: List<ComponentGroup>, override v
         if (timeWindow != null) check(notary != null) { "Transactions with time-windows must be notarised" }
     }
 
-    // Check, by lazy accessing each component, if all of them can be deserialised.
-    // TODO add each new component in this function.
+    // Check, by accessing each component, if all of them can be deserialised successfully.
+    // This check is added for clarity and to get a more meaningful error on init function.
     private fun checkAllFieldsDeserialised() {
         try {
             inputs; outputs; commands; attachments; notary; timeWindow
@@ -149,7 +149,7 @@ data class WireTransaction(val componentGroups: List<ComponentGroup>, override v
      * Build filtered transaction using provided filtering functions.
      */
     fun buildFilteredTransaction(filtering: Predicate<Any>): FilteredTransaction {
-        return FilteredTransaction.buildMerkleTransaction(this, filtering)
+        return FilteredTransaction.buildFilteredTransaction(this, filtering)
     }
 
     /**
@@ -165,8 +165,7 @@ data class WireTransaction(val componentGroups: List<ComponentGroup>, override v
     @VisibleForTesting
     val groupsMerkleRoots: List<SecureHash> get() = componentGroups.mapIndexed { index, it ->
         if (it.components.isNotEmpty()) {
-            MerkleTree.getMerkleTree(it.components.mapIndexed { indexInternal, itInternal ->
-                serializedHash(itInternal, privacySalt, index, indexInternal) }).hash
+            MerkleTree.getMerkleTree(availableComponentHashes[index]).hash
         } else {
             SecureHash.zeroHash
         }
@@ -191,6 +190,27 @@ data class WireTransaction(val componentGroups: List<ComponentGroup>, override v
         for (command in commands) buf.appendln("${Emoji.diamond}COMMAND:    $command")
         for (attachment in attachments) buf.appendln("${Emoji.paperclip}ATTACHMENT: $attachment")
         return buf.toString()
+    }
+
+    private companion object {
+        /**
+         * Creating list of [ComponentGroup] used in one of the constructors of [WireTransaction] required
+         * for backwards compatibility purposes.
+         */
+        fun createComponentGroups(inputs: List<StateRef>,
+                                  outputs: List<TransactionState<ContractState>>,
+                                  commands: List<Command<*>>,
+                                  attachments: List<SecureHash>,
+                                  notary: Party?,
+                                  timeWindow: TimeWindow?): List<ComponentGroup> {
+            val inputsGroup = ComponentGroup(inputs.map { it.serialize() })
+            val outputsGroup = ComponentGroup(outputs.map { it.serialize() })
+            val commandsGroup = ComponentGroup(commands.map { it.serialize() })
+            val attachmentsGroup = ComponentGroup(attachments.map { it.serialize() })
+            val notaryGroup = ComponentGroup(if (notary != null) listOf(notary.serialize()) else emptyList())
+            val timeWindowGroup = ComponentGroup(if (timeWindow != null) listOf(timeWindow.serialize()) else emptyList())
+            return listOf(inputsGroup, outputsGroup, commandsGroup, attachmentsGroup, notaryGroup, timeWindowGroup)
+        }
     }
 }
 
