@@ -7,10 +7,7 @@ import net.corda.core.identity.Party
 import net.corda.core.internal.Emoji
 import net.corda.core.internal.VisibleForTesting
 import net.corda.core.node.ServicesForResolution
-import net.corda.core.serialization.CordaSerializable
-import net.corda.core.serialization.SerializedBytes
-import net.corda.core.serialization.deserialize
-import net.corda.core.serialization.serialize
+import net.corda.core.serialization.*
 import net.corda.core.utilities.OpaqueBytes
 import java.security.PublicKey
 import java.security.SignatureException
@@ -49,30 +46,29 @@ data class WireTransaction(val componentGroups: List<ComponentGroup>, override v
                 privacySalt: PrivacySalt = PrivacySalt()
     ) : this(createComponentGroups(inputs, outputs, commands, attachments, notary, timeWindow), privacySalt)
 
-    /** Pointers to the input states on the ledger, identified by (tx identity hash, output index). */
-    override val inputs: List<StateRef> by lazy { componentGroups[INPUTS_GROUP.ordinal].components.map { SerializedBytes<StateRef>(it.bytes).deserialize() } }
+    /** Hashes of the ZIP/JAR files that are needed to interpret the contents of this wire transaction. */
+    override val attachments: List<SecureHash> = componentGroups[ATTACHMENTS_GROUP.ordinal].components.map { SerializedBytes<SecureHash>(it.bytes).deserialize() }
 
-    override val outputs: List<TransactionState<ContractState>> by lazy { componentGroups[OUTPUTS_GROUP.ordinal].components.map { SerializedBytes<TransactionState<ContractState>>(it.bytes).deserialize() } }
+    /** Pointers to the input states on the ledger, identified by (tx identity hash, output index). */
+    override val inputs: List<StateRef> = componentGroups[INPUTS_GROUP.ordinal].components.map { SerializedBytes<StateRef>(it.bytes).deserialize() }
+
+    override val outputs: List<TransactionState<ContractState>> = componentGroups[OUTPUTS_GROUP.ordinal].components.map { SerializedBytes<TransactionState<ContractState>>(it.bytes).deserialize(context = SerializationFactory.defaultFactory.defaultContext.withAttachmentsClassLoader(attachments)) }
 
     /** Ordered list of ([CommandData], [PublicKey]) pairs that instruct the contracts what to do. */
-    override val commands: List<Command<*>> by lazy { componentGroups[COMMANDS_GROUP.ordinal].components.map { SerializedBytes<Command<*>>(it.bytes).deserialize() } }
+    override val commands: List<Command<*>> = componentGroups[COMMANDS_GROUP.ordinal].components.map { SerializedBytes<Command<*>>(it.bytes).deserialize(context = SerializationFactory.defaultFactory.defaultContext.withAttachmentsClassLoader(attachments)) }
 
-    /** Hashes of the ZIP/JAR files that are needed to interpret the contents of this wire transaction. */
-    override val attachments: List<SecureHash> by lazy { componentGroups[ATTACHMENTS_GROUP.ordinal].components.map { SerializedBytes<SecureHash>(it.bytes).deserialize() } }
-
-    override val notary: Party? by lazy {
+    override val notary: Party? = let {
         val notaries: List<Party> = componentGroups[NOTARY_GROUP.ordinal].components.map { SerializedBytes<Party>(it.bytes).deserialize() }
         check(notaries.size <= 1) { "Invalid Transaction. More than 1 notary party detected." }
         if (notaries.isNotEmpty()) notaries[0] else null
     }
-    override val timeWindow: TimeWindow? by lazy {
+    override val timeWindow: TimeWindow? = let {
         val timeWindows: List<TimeWindow> = componentGroups[TIMEWINDOW_GROUP.ordinal].components.map { SerializedBytes<TimeWindow>(it.bytes).deserialize() }
         check(timeWindows.size <= 1) { "Invalid Transaction. More than 1 time-window detected." }
         if (timeWindows.isNotEmpty()) timeWindows[0] else null
     }
 
     init {
-        checkAllFieldsDeserialised() // This check is here to group and get meaningful deserialization errors, before any other check or usage.
         checkBaseInvariants()
         check(inputs.isNotEmpty() || outputs.isNotEmpty()) { "A transaction must contain at least one input or output state" }
         check(commands.isNotEmpty()) { "A transaction must contain at least one command" }
@@ -192,7 +188,7 @@ data class WireTransaction(val componentGroups: List<ComponentGroup>, override v
         return buf.toString()
     }
 
-    private companion object {
+    internal companion object {
         /**
          * Creating list of [ComponentGroup] used in one of the constructors of [WireTransaction] required
          * for backwards compatibility purposes.
@@ -204,8 +200,8 @@ data class WireTransaction(val componentGroups: List<ComponentGroup>, override v
                                   notary: Party?,
                                   timeWindow: TimeWindow?): List<ComponentGroup> {
             val inputsGroup = ComponentGroup(inputs.map { it.serialize() })
-            val outputsGroup = ComponentGroup(outputs.map { it.serialize() })
-            val commandsGroup = ComponentGroup(commands.map { it.serialize() })
+            val outputsGroup = ComponentGroup(outputs.map { it.serialize(context = SerializationFactory.defaultFactory.defaultContext.withAttachmentsClassLoader(attachments)) })
+            val commandsGroup = ComponentGroup(commands.map { it.serialize(context = SerializationFactory.defaultFactory.defaultContext.withAttachmentsClassLoader(attachments)) })
             val attachmentsGroup = ComponentGroup(attachments.map { it.serialize() })
             val notaryGroup = ComponentGroup(if (notary != null) listOf(notary.serialize()) else emptyList())
             val timeWindowGroup = ComponentGroup(if (timeWindow != null) listOf(timeWindow.serialize()) else emptyList())
