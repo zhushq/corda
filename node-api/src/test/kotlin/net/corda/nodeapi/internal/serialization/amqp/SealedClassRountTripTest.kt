@@ -4,6 +4,7 @@ import org.junit.Test
 import java.io.File
 
 import net.corda.core.serialization.SerializedBytes
+import net.corda.core.utilities.ByteSequence
 
 //
 sealed class SealedBaseA
@@ -27,10 +28,14 @@ class SealedClassRoundTripTest {
         // f.writeBytes(sc.bytes)
         // println(path)
 
+        println (sf.classCarpenter.loaded)
 
         val sc2 = f.readBytes()
-        val deserializedC = DeserializationInput(sf).deserialize(SerializedBytes<Object>(sc2))
+        val deserializedC = DeserializationInput(sf).deserialize(SerializedBytes<Any>(sc2))
+//        val deserializedC2 = DeserializationInput(sf).deserialize(ByteSequence (sc2 , Derived2::class.java)
+
+        println (sf.classCarpenter.loaded)
+
         println (deserializedC::class.java)
     }
-
 }
