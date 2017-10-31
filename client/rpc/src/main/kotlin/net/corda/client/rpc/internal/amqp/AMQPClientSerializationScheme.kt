@@ -12,16 +12,21 @@ import net.corda.nodeapi.internal.serialization.amqp.SerializerFactory
 import java.util.concurrent.atomic.AtomicBoolean
 
 class AMQPClientSerializationScheme : AbstractAMQPSerializationScheme() {
-    override fun rpcClientSerializerFactory(context: SerializationContext) : SerializerFactory {
-        return SerializerFactory(context.whitelist, context.deserializationClassLoader)
-    }
+    private fun serializerFactory(context: SerializationContext) =
+        SerializerFactory(context.whitelist, context.deserializationClassLoader).apply {
+            register(ObservableSerializer)
+        }
 
-    override fun rpcServerSerializerFactory(context: SerializationContext) : SerializerFactory {
-        return SerializerFactory(context.whitelist, context.deserializationClassLoader)
-    }
+    override fun rpcClientSerializerFactory(context: SerializationContext) = serializerFactory(context)
+
+    override fun rpcServerSerializerFactory(context: SerializationContext) = serializerFactory(context)
 
     override fun canDeserializeVersion(byteSequence: ByteSequence, target: SerializationContext.UseCase) =
         canDeserializeVersion(byteSequence) && (target != SerializationContext.UseCase.Checkpoint)
+
+    fun createContext(serializationContext: SerializationContext, observableContext: ObservableContext): SerializationContext {
+        return serializationContext.withProperty(RpcObservableContextKey, observableContext)
+    }
 
     companion object {
         val isInitialised = AtomicBoolean(false)
@@ -33,6 +38,7 @@ class AMQPClientSerializationScheme : AbstractAMQPSerializationScheme() {
                     registerScheme(KryoClientSerializationScheme())
                     registerScheme(AMQPClientSerializationScheme())
                 }
+
                 SerializationDefaults.P2P_CONTEXT = AMQP_P2P_CONTEXT
                 SerializationDefaults.RPC_CLIENT_CONTEXT = AMQP_RPC_CLIENT_CONTEXT
             } catch (e: IllegalStateException) {

@@ -6,7 +6,8 @@ import com.google.common.cache.RemovalCause
 import com.google.common.cache.RemovalListener
 import com.google.common.util.concurrent.SettableFuture
 import com.google.common.util.concurrent.ThreadFactoryBuilder
-import net.corda.client.rpc.internal.kryo.ObservableSerializer as RpcClientObservableSerializer
+import net.corda.client.rpc.internal.kryo.ObservableSerializer as KryoRpcClientObservableSerializer
+import net.corda.client.rpc.internal.amqp.ObservableSerializer as AMQPRpcClientObservableSerializer
 import net.corda.client.rpc.RPCException
 import net.corda.client.rpc.RPCSinceVersion
 import net.corda.core.crypto.random63BitValue
@@ -125,7 +126,9 @@ class RPCClientProxyHandler(
     private val observablesToReap = ThreadBox(object {
         var observables = ArrayList<RPCApi.ObservableId>()
     })
-    private val serializationContextWithObservableContext = RpcClientObservableSerializer.createContext(serializationContext, observableContext)
+
+    private val kryoSerializationContextWithObservableContext = KryoRpcClientObservableSerializer.createContext(serializationContext, observableContext)
+    private val amqpSerializationContextWithObservableContext = AMQPRpcClientObservableSerializer.createContext(serializationContext, observableContext)
 
     private fun createRpcObservableMap(): RpcObservableMap {
         val onObservableRemove = RemovalListener<RPCApi.ObservableId, UnicastSubject<Notification<*>>> {
