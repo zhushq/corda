@@ -1,11 +1,11 @@
-package net.corda.client.rpc.internal
+package net.corda.client.rpc.internal.kryo
 
 import com.esotericsoftware.kryo.pool.KryoPool
+import net.corda.client.rpc.internal.amqp.AMQPClientSerializationScheme
 import net.corda.core.serialization.SerializationContext
 import net.corda.core.serialization.SerializationDefaults
 import net.corda.core.utilities.ByteSequence
 import net.corda.nodeapi.internal.serialization.*
-import net.corda.nodeapi.internal.serialization.amqp.AMQPClientSerializationScheme
 import net.corda.nodeapi.internal.serialization.kryo.AbstractKryoSerializationScheme
 import net.corda.nodeapi.internal.serialization.kryo.DefaultKryoCustomizer
 import net.corda.nodeapi.internal.serialization.kryo.KryoHeaderV0_1
@@ -19,7 +19,7 @@ class KryoClientSerializationScheme : AbstractKryoSerializationScheme() {
 
     override fun rpcClientKryoPool(context: SerializationContext): KryoPool {
         return KryoPool.Builder {
-            DefaultKryoCustomizer.customize(RPCKryo(RpcClientObservableSerializer, context)).apply {
+            DefaultKryoCustomizer.customize(RPCKryo(ObservableSerializer, context)).apply {
                 classLoader = context.deserializationClassLoader
             }
         }.build()

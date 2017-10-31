@@ -1,7 +1,7 @@
 package net.corda.testing
 
 import net.corda.client.mock.Generator
-import net.corda.client.rpc.internal.KryoClientSerializationScheme
+import net.corda.client.rpc.internal.kryo.KryoClientSerializationScheme
 import net.corda.client.rpc.internal.RPCClient
 import net.corda.client.rpc.internal.RPCClientConfiguration
 import net.corda.core.concurrent.CordaFuture
@@ -21,7 +21,7 @@ import net.corda.nodeapi.ArtemisTcpTransport
 import net.corda.nodeapi.ConnectionDirection
 import net.corda.nodeapi.RPCApi
 import net.corda.nodeapi.User
-import net.corda.nodeapi.internal.serialization.KRYO_RPC_CLIENT_CONTEXT
+import net.corda.nodeapi.internal.serialization.AMQP_RPC_CLIENT_CONTEXT
 import net.corda.testing.driver.*
 import org.apache.activemq.artemis.api.core.SimpleString
 import org.apache.activemq.artemis.api.core.TransportConfiguration
@@ -521,7 +521,7 @@ class RandomRpcUser {
             val username = args[2]
             val password = args[3]
             KryoClientSerializationScheme.initialiseSerialization()
-            val handle = RPCClient<RPCOps>(hostAndPort, null, serializationContext = KRYO_RPC_CLIENT_CONTEXT).start(rpcClass, username, password)
+            val handle = RPCClient<RPCOps>(hostAndPort, null, serializationContext = AMQP_RPC_CLIENT_CONTEXT).start(rpcClass, username, password)
             val callGenerators = rpcClass.declaredMethods.map { method ->
                 Generator.sequence(method.parameters.map {
                     generatorStore[it.type] ?: throw Exception("No generator for ${it.type}")

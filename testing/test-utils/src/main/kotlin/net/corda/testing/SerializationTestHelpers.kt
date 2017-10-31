@@ -2,15 +2,15 @@ package net.corda.testing
 
 import com.nhaarman.mockito_kotlin.doNothing
 import com.nhaarman.mockito_kotlin.whenever
-import net.corda.client.rpc.internal.KryoClientSerializationScheme
+import net.corda.client.rpc.internal.kryo.KryoClientSerializationScheme
+import net.corda.client.rpc.internal.amqp.AMQPClientSerializationScheme
 import net.corda.core.crypto.SecureHash
 import net.corda.core.serialization.*
 import net.corda.core.serialization.internal.SerializationEnvironment
 import net.corda.core.utilities.ByteSequence
 import net.corda.node.serialization.KryoServerSerializationScheme
+import net.corda.node.serialization.AMQPServerSerializationScheme
 import net.corda.nodeapi.internal.serialization.*
-import net.corda.nodeapi.internal.serialization.amqp.AMQPClientSerializationScheme
-import net.corda.nodeapi.internal.serialization.amqp.AMQPServerSerializationScheme
 import org.junit.rules.TestRule
 import org.junit.runner.Description
 import org.junit.runners.model.Statement
@@ -55,6 +55,8 @@ fun initialiseTestSerialization(armed: Boolean): TestSerializationEnvironment {
 private fun initialiseTestSerializationImpl() = SerializationDefaults.apply {
     // Stop the CordaRPCClient from trying to setup the defaults as we're about to do it now
     KryoClientSerializationScheme.isInitialised.set(true)
+    AMQPClientSerializationScheme.isInitialised.set(true)
+
     // Check that everything is configured for testing with mutable delegating instances.
     try {
         check(SERIALIZATION_FACTORY is TestSerializationFactory)
@@ -104,25 +106,21 @@ private fun initialiseTestSerializationImpl() = SerializationDefaults.apply {
         registerScheme(AMQPServerSerializationScheme())
     }
 
-    (P2P_CONTEXT as TestSerializationContext).delegate = if (isAmqpEnabled()) AMQP_P2P_CONTEXT else KRYO_P2P_CONTEXT
-    (RPC_SERVER_CONTEXT as TestSerializationContext).delegate = KRYO_RPC_SERVER_CONTEXT
-    (RPC_CLIENT_CONTEXT as TestSerializationContext).delegate = KRYO_RPC_CLIENT_CONTEXT
-    (STORAGE_CONTEXT as TestSerializationContext).delegate = if (isAmqpEnabled()) AMQP_STORAGE_CONTEXT else KRYO_STORAGE_CONTEXT
-    (CHECKPOINT_CONTEXT as TestSerializationContext).delegate = KRYO_CHECKPOINT_CONTEXT
+
+    (SerializationDefaults.P2P_CONTEXT as TestSerializationContext).delegate = AMQP_P2P_CONTEXT
+    (SerializationDefaults.RPC_SERVER_CONTEXT as TestSerializationContext).delegate = AMQP_RPC_SERVER_CONTEXT
+    (SerializationDefaults.RPC_CLIENT_CONTEXT as TestSerializationContext).delegate = AMQP_RPC_CLIENT_CONTEXT
+    (SerializationDefaults.STORAGE_CONTEXT as TestSerializationContext).delegate = AMQP_STORAGE_CONTEXT
+    (SerializationDefaults.CHECKPOINT_CONTEXT as TestSerializationContext).delegate = KRYO_CHECKPOINT_CONTEXT
 }
 
-private const val AMQP_ENABLE_PROP_NAME = "net.corda.testing.amqp.enable"
-
-// TODO: Remove usages of this function when we fully switched to AMQP
-private fun isAmqpEnabled(): Boolean = java.lang.Boolean.getBoolean(AMQP_ENABLE_PROP_NAME)
-
 private fun SerializationDefaults.resetTestSerialization() {
-    (SERIALIZATION_FACTORY as TestSerializationFactory).delegate = null
-    (P2P_CONTEXT as TestSerializationContext).delegate = null
-    (RPC_SERVER_CONTEXT as TestSerializationContext).delegate = null
-    (RPC_CLIENT_CONTEXT as TestSerializationContext).delegate = null
-    (STORAGE_CONTEXT as TestSerializationContext).delegate = null
-    (CHECKPOINT_CONTEXT as TestSerializationContext).delegate = null
+    (SerializationDefaults.SERIALIZATION_FACTORY as TestSerializationFactory).delegate = null
+    (SerializationDefaults.P2P_CONTEXT as TestSerializationContext).delegate = null
+    (SerializationDefaults.RPC_SERVER_CONTEXT as TestSerializationContext).delegate = null
+    (SerializationDefaults.RPC_CLIENT_CONTEXT as TestSerializationContext).delegate = null
+    (SerializationDefaults.STORAGE_CONTEXT as TestSerializationContext).delegate = null
+    (SerializationDefaults.CHECKPOINT_CONTEXT as TestSerializationContext).delegate = null
 }
 
 class TestSerializationFactory : SerializationFactory() {

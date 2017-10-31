@@ -56,7 +56,7 @@ public final class ForbiddenLambdaSerializationTests {
         EnumSet<SerializationContext.UseCase> contexts = EnumSet.complementOf(EnumSet.of(SerializationContext.UseCase.Checkpoint));
 
         contexts.forEach(ctx -> {
-            SerializationContext context = new SerializationContextImpl(KryoSerialisationSchemeKt.getKryoHeaderV0_1(), this.getClass().getClassLoader(), AllWhitelist.INSTANCE, Maps.newHashMap(), true, ctx);
+            SerializationContext context = new SerializationContextImpl(KryoSerializationSchemeKt.getKryoHeaderV0_1(), this.getClass().getClassLoader(), AllWhitelist.INSTANCE, Maps.newHashMap(), true, ctx);
 
             String value = "Hey";
             Callable<String> target = () -> value;
