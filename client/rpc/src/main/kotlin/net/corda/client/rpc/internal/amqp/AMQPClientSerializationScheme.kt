@@ -18,15 +18,11 @@ class AMQPClientSerializationScheme : AbstractAMQPSerializationScheme() {
         }
 
     override fun rpcClientSerializerFactory(context: SerializationContext) = serializerFactory(context)
-
     override fun rpcServerSerializerFactory(context: SerializationContext) = serializerFactory(context)
 
     override fun canDeserializeVersion(byteSequence: ByteSequence, target: SerializationContext.UseCase) =
         canDeserializeVersion(byteSequence) && (target != SerializationContext.UseCase.Checkpoint)
 
-    fun createContext(serializationContext: SerializationContext, observableContext: ObservableContext): SerializationContext {
-        return serializationContext.withProperty(RpcObservableContextKey, observableContext)
-    }
 
     companion object {
         val isInitialised = AtomicBoolean(false)

@@ -128,7 +128,7 @@ class RPCClientProxyHandler(
     })
 
     private val kryoSerializationContextWithObservableContext = KryoRpcClientObservableSerializer.createContext(serializationContext, observableContext)
-    private val amqpSerializationContextWithObservableContext = AMQPRpcClientObservableSerializer.createContext(serializationContext, observableContext)
+//    private val amqpSerializationContextWithObservableContext = AMQPRpcClientObservableSerializer.createContext(serializationContext, observableContext)
 
     private fun createRpcObservableMap(): RpcObservableMap {
         val onObservableRemove = RemovalListener<RPCApi.ObservableId, UnicastSubject<Notification<*>>> {
@@ -209,7 +209,8 @@ class RPCClientProxyHandler(
         val rpcId = RPCApi.RpcRequestId(random63BitValue())
         callSiteMap?.set(rpcId.toLong, Throwable("<Call site of root RPC '${method.name}'>"))
         try {
-            val serialisedArguments = (arguments?.toList() ?: emptyList()).serialize(context = serializationContextWithObservableContext)
+            val serialisedArguments = (arguments?.toList() ?: emptyList()).serialize(context = kryoSerializationContextWithObservableContext)
+
             val request = RPCApi.ClientToServer.RpcRequest(clientAddress, rpcId, method.name, serialisedArguments.bytes)
             val replyFuture = SettableFuture.create<Any>()
             sessionAndProducerPool.run {
@@ -241,7 +242,8 @@ class RPCClientProxyHandler(
 
     // The handler for Artemis messages.
     private fun artemisMessageHandler(message: ClientMessage) {
-        val serverToClient = RPCApi.ServerToClient.fromClientMessage(serializationContextWithObservableContext, message)
+        val serverToClient = RPCApi.ServerToClient.fromClientMessage(kryoSerializationContextWithObservableContext, message)
+
         log.debug { "Got message from RPC server $serverToClient" }
         when (serverToClient) {
             is RPCApi.ServerToClient.RpcReply -> {

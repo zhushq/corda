@@ -86,7 +86,7 @@ abstract class AbstractAMQPSerializationScheme : SerializationScheme {
 
     override fun <T : Any> deserialize(byteSequence: ByteSequence, clazz: Class<T>, context: SerializationContext): T {
         val serializerFactory = getSerializerFactory(context)
-        return DeserializationInput(serializerFactory).deserialize(byteSequence, clazz)
+        return DeserializationInput(serializerFactory).deserialize(byteSequence, clazz, context)
     }
 
     override fun <T : Any> serialize(obj: T, context: SerializationContext): SerializedBytes<T> {

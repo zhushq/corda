@@ -261,11 +261,11 @@ open class SerializerFactory(val whitelist: ClassWhitelist, cl: ClassLoader) {
         for (customSerializer in customSerializers) {
             if (customSerializer.isSerializerFor(clazz)) {
                 val declaredSuperClass = declaredType.asClass()?.superclass
-                if (declaredSuperClass == null || !customSerializer.isSerializerFor(declaredSuperClass) || !customSerializer.revealSubclassesInSchema) {
-                    return customSerializer
+                return if (declaredSuperClass == null || !customSerializer.isSerializerFor(declaredSuperClass) || !customSerializer.revealSubclassesInSchema) {
+                    customSerializer
                 } else {
                     // Make a subclass serializer for the subclass and return that...
-                    return CustomSerializer.SubClass(clazz, uncheckedCast(customSerializer))
+                    CustomSerializer.SubClass(clazz, uncheckedCast(customSerializer))
                 }
             }
         }
