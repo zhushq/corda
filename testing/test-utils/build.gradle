@@ -8,8 +8,8 @@ description 'Testing utilities for Corda'
 
 dependencies {
     compile project(':test-common')
-    compile project(':core')
-    compile project(':node')
+    compile project(':client:rpc')
+    compile project(':client:jackson')
     compile project(':client:mock')
 
     compile "org.jetbrains.kotlin:kotlin-stdlib-jre8:$kotlin_version"
