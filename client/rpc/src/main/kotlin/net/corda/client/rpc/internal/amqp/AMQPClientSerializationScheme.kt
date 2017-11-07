@@ -12,9 +12,13 @@ import net.corda.nodeapi.internal.serialization.amqp.SerializerFactory
 import java.util.concurrent.atomic.AtomicBoolean
 
 class AMQPClientSerializationScheme : AbstractAMQPSerializationScheme() {
+    init {
+        println ("AMQP Client Serialization Scheme init")
+    }
+
     private fun serializerFactory(context: SerializationContext) =
         SerializerFactory(context.whitelist, context.deserializationClassLoader).apply {
-            register(ObservableSerializer)
+            register(ObservableSerializer(this))
         }
 
     override fun rpcClientSerializerFactory(context: SerializationContext) = serializerFactory(context)

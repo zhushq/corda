@@ -9,9 +9,14 @@ import rx.Observable
 import java.lang.reflect.Type
 import java.time.*
 
+class OhNo : Exception ("Oh no!!!")
+
 /**
  */
-object ObservableSerializer : CustomSerializer.Implements<Observable<*>>(Observable::class.java) {
+class ObservableSerializer(val factory : SerializerFactory) : CustomSerializer.Implements<Observable<*>>(Observable::class.java) {
+    init {
+        println ("\nObserver me getting made!!!\n\n")
+    }
     override val schemaForDocumentation = Schema(listOf(RestrictedType(
             type.toString(),
             "",
@@ -21,12 +26,15 @@ object ObservableSerializer : CustomSerializer.Implements<Observable<*>>(Observa
             emptyList())))
 
     override fun writeDescribedObject(obj: Observable<*>, data: Data, type: Type, output: SerializationOutput) {
-        throw java.io.NotSerializableException("POOP 1")
+        println("\n\nso much poop1\n\n")
+        throw OhNo()
     }
 
     override fun readObject(obj: Any, schema: Schema, input: DeserializationInput): Observable<*> {
+        println("\n\nso much poop2\n\n")
+
     //    if (true) {
-            throw java.io.NotSerializableException("POOP 2")
+        throw OhNo()
       //  }
 
 //        val observableContext = context[RpcObservableContextKey] as ObservableContext
