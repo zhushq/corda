@@ -124,7 +124,6 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
     protected lateinit var checkpointStorage: CheckpointStorage
     protected lateinit var smm: StateMachineManager
     private lateinit var tokenizableServices: List<Any>
-    protected lateinit var attachments: NodeAttachmentService
     protected lateinit var network: MessagingService
     protected val runOnStop = ArrayList<() -> Any?>()
     protected val _nodeReadyFuture = openFuture<Unit>()
@@ -182,7 +181,10 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
         // Do all of this in a database transaction so anything that might need a connection has one.
         val (startedImpl, schedulerService) = initialiseDatabasePersistence(schemaService) { database ->
             val transactionStorage = makeTransactionStorage(database)
-            val nodeServices = makeServices(keyPairs, schemaService, transactionStorage, database, info)
+            val metrics = MetricRegistry()
+            val attachments = NodeAttachmentService(metrics)
+            val stateLoader = StateLoaderImpl(transactionStorage, attachments)
+            val nodeServices = makeServices(keyPairs, schemaService, transactionStorage, stateLoader, metrics, attachments, database, info)
             val notaryService = makeNotaryService(nodeServices, database)
             smm = makeStateMachineManager(database)
             val flowStarter = FlowStarterImpl(serverThread, smm)
@@ -190,7 +192,7 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
                     platformClock,
                     database,
                     flowStarter,
-                    _services,
+                    stateLoader,
                     unfinishedSchedules = busyNodeLatch,
                     serverThread = serverThread)
             if (serverThread is ExecutorService) {
@@ -483,10 +485,15 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
      * Builds node internal, advertised, and plugin services.
      * Returns a list of tokenizable services to be added to the serialisation context.
      */
-    private fun makeServices(keyPairs: Set<KeyPair>, schemaService: SchemaService, transactionStorage: WritableTransactionStorage, database: CordaPersistence, info: NodeInfo): MutableList<Any> {
+    private fun makeServices(keyPairs: Set<KeyPair>,
+                             schemaService: SchemaService,
+                             transactionStorage: WritableTransactionStorage,
+                             stateLoader: StateLoader,
+                             metrics: MetricRegistry,
+                             attachments: AttachmentStorage,
+                             database: CordaPersistence,
+                             info: NodeInfo): MutableList<Any> {
         checkpointStorage = DBCheckpointStorage()
-        val metrics = MetricRegistry()
-        attachments = NodeAttachmentService(metrics)
         val cordappProvider = CordappProviderImpl(cordappLoader, attachments)
         val identityService = makeIdentityService(info)
         val keyManagementService = makeKeyManagementService(identityService, keyPairs)
@@ -495,8 +502,10 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
                 keyManagementService,
                 schemaService,
                 transactionStorage,
+                stateLoader,
                 MonitoringService(metrics),
                 cordappProvider,
+                attachments,
                 database,
                 info)
         network = makeMessagingService(database, info)
@@ -697,8 +706,8 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
     }
 
     protected open fun generateKeyPair() = cryptoGenerateKeyPair()
-    protected open fun makeVaultService(keyManagementService: KeyManagementService, services: ServicesForResolution, hibernateConfig: HibernateConfiguration): VaultServiceInternal {
-        return NodeVaultService(platformClock, keyManagementService, services, hibernateConfig)
+    protected open fun makeVaultService(keyManagementService: KeyManagementService, stateLoader: StateLoader, attachments: AttachmentStorage, hibernateConfig: HibernateConfiguration): VaultServiceInternal {
+        return NodeVaultService(platformClock, keyManagementService, stateLoader, attachments, hibernateConfig)
     }
 
     private inner class ServiceHubInternalImpl(
@@ -709,20 +718,20 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
             override val keyManagementService: KeyManagementService,
             override val schemaService: SchemaService,
             override val validatedTransactions: WritableTransactionStorage,
-
+            private val stateLoader: StateLoader,
             override val monitoringService: MonitoringService,
             override val cordappProvider: CordappProviderInternal,
+            override val attachments: AttachmentStorage,
             override val database: CordaPersistence,
             override val myInfo: NodeInfo
-    ) : SingletonSerializeAsToken(), ServiceHubInternal {
+    ) : SingletonSerializeAsToken(), ServiceHubInternal, StateLoader by stateLoader {
         override val rpcFlows = ArrayList<Class<out FlowLogic<*>>>()
         override val stateMachineRecordedTransactionMapping = DBTransactionMappingStorage()
         override val auditService = DummyAuditService()
         override val transactionVerifierService by lazy { makeTransactionVerifierService() }
         override val networkMapCache by lazy { NetworkMapCacheImpl(PersistentNetworkMapCache(database), identityService) }
-        override val vaultService by lazy { makeVaultService(keyManagementService, this, database.hibernateConfig) }
+        override val vaultService by lazy { makeVaultService(keyManagementService, this, attachments, database.hibernateConfig) }
         override val contractUpgradeService by lazy { ContractUpgradeServiceImpl() }
-        override val attachments: AttachmentStorage get() = this@AbstractNode.attachments
         override val networkService: MessagingService get() = network
         override val clock: Clock get() = platformClock
         override val myNodeStateObservable: Observable<NodeState> get() = nodeStateObservable
