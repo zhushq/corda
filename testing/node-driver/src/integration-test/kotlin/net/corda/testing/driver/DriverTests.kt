@@ -9,6 +9,7 @@ import net.corda.node.internal.NodeStartup
 import net.corda.testing.DUMMY_BANK_A
 import net.corda.testing.DUMMY_NOTARY
 import net.corda.testing.DUMMY_REGULATOR
+import net.corda.testing.IntegrationTest
 import net.corda.testing.ProjectStructure.projectRootDir
 import net.corda.testing.node.NotarySpec
 import org.assertj.core.api.Assertions.assertThat
@@ -16,7 +17,7 @@ import org.junit.Test
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 
-class DriverTests {
+class DriverTests : IntegrationTest() {
     companion object {
         private val executorService: ScheduledExecutorService = Executors.newScheduledThreadPool(2)
 
