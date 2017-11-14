@@ -15,6 +15,7 @@ import net.corda.node.services.config.configOf
 import net.corda.node.services.config.parseAsNodeConfiguration
 import net.corda.node.services.config.plus
 import net.corda.nodeapi.User
+import net.corda.testing.IntegrationTest
 import net.corda.testing.SerializationEnvironmentRule
 import net.corda.testing.driver.addressMustNotBeBoundFuture
 import net.corda.testing.getFreeLocalPorts
@@ -28,7 +29,7 @@ import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
 // TODO Some of the logic here duplicates what's in the driver
-abstract class NodeBasedTest(private val cordappPackages: List<String> = emptyList()) {
+abstract class NodeBasedTest(private val cordappPackages: List<String> = emptyList()) : IntegrationTest() {
     companion object {
         private val WHITESPACE = "\\s++".toRegex()
     }
