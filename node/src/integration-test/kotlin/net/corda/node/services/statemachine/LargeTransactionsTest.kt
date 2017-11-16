@@ -6,13 +6,10 @@ import net.corda.core.flows.*
 import net.corda.core.internal.InputStreamAndHash
 import net.corda.core.messaging.startFlow
 import net.corda.core.transactions.TransactionBuilder
-import net.corda.testing.BOB
-import net.corda.testing.DUMMY_NOTARY
-import net.corda.testing.aliceAndBob
+import net.corda.testing.*
 import net.corda.testing.contracts.DummyContract
 import net.corda.testing.contracts.DummyState
 import net.corda.testing.driver.driver
-import net.corda.testing.dummyCommand
 import org.junit.Test
 import kotlin.test.assertEquals
 
@@ -20,7 +17,7 @@ import kotlin.test.assertEquals
  * Check that we can add lots of large attachments to a transaction and that it works OK, e.g. does not hit the
  * transaction size limit (which should only consider the hashes).
  */
-class LargeTransactionsTest {
+class LargeTransactionsTest : IntegrationTest() {
     @StartableByRPC
     @InitiatingFlow
     class SendLargeTransactionFlow(private val hash1: SecureHash,

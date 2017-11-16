@@ -16,6 +16,7 @@ import net.corda.node.services.Permissions.Companion.invokeRpc
 import net.corda.node.services.messaging.RPCServerConfiguration
 import net.corda.nodeapi.RPCApi
 import net.corda.nodeapi.User
+import net.corda.testing.IntegrationTest
 import net.corda.testing.driver.poll
 import net.corda.testing.internal.*
 import org.apache.activemq.artemis.api.core.SimpleString
@@ -29,7 +30,7 @@ import java.time.Duration
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicInteger
 
-class RPCStabilityTests {
+class RPCStabilityTests : IntegrationTest() {
 
     object DummyOps : RPCOps {
         override val protocolVersion = 0
