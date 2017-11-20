@@ -89,9 +89,14 @@ data class ContractUpgradeFilteredTransaction(
 }
 
 /**
- * A contract upgrade transaction with fully resolved inputs and signatures. In contrast with a regular transaction,
- * signatures are checked against the signers specified by input states' *participants* fields, so full resolution is
- * needed for signature verification.
+ * A contract upgrade transaction with fully resolved inputs and signatures. Contract upgrade transactions are separate
+ * to regular transactions because their validation logic is specialised; the original contract by definition cannot be
+ * aware of the upgraded contract (it was written after the original contract was developed), so its validation logic
+ * cannot succeed. Instead alternative verification logic is used which verifies that the outputs correspond to the
+ * inputs after upgrading.
+ *
+ * In contrast with a regular transaction, signatures are checked against the signers specified by input states'
+ * *participants* fields, so full resolution is needed for signature verification.
  */
 data class ContractUpgradeLedgerTransaction(
         override val inputs: List<StateAndRef<ContractState>>,
