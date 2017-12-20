@@ -5,6 +5,7 @@ import net.corda.cordform.CordformDefinition
 import net.corda.cordform.CordformNode
 import org.apache.tools.ant.filters.FixCrLfFilter
 import org.gradle.api.DefaultTask
+import org.gradle.api.NamedDomainObjectContainer
 import org.gradle.api.GradleException
 import org.gradle.api.plugins.JavaPluginConvention
 import org.gradle.api.tasks.SourceSet.MAIN_SOURCE_SET_NAME
@@ -52,6 +53,24 @@ open class Cordform : DefaultTask() {
     @Suppress("MemberVisibilityCanPrivate")
     fun node(configureClosure: Closure<in Node>) {
         nodes += project.configure(Node(project), configureClosure) as Node
+    }
+
+    /**
+     * Permits to specify a set of users in the task as:
+     *
+     * myUsers = listOfUsers {
+     *     userName1 {
+     *        password = "<password>"
+     *        permissions = ["<permission1>", ...]
+     *    }
+     *    ...
+     * }
+     */
+    fun listOfUsers(usersConfig: Closure<*>): List<Map<String, Any?>> {
+        return (project.container(NodeUser::class.java) as NamedDomainObjectContainer<NodeUser>)
+                .configure(usersConfig)
+                .map { it.toPropertyMap() }
+                .toList()
     }
 
     /**
@@ -283,4 +302,15 @@ open class Cordform : DefaultTask() {
 
     private fun Node.logFile(name: String): Path = this.logDirectory().resolve(name)
     private fun ProcessBuilder.addEnvironment(key: String, value: String) = this.apply { environment().put(key, value) }
+
+    // An element of node DSL describing a user.
+    // @see listOfUsers
+    internal class NodeUser(var name: String? = null) {
+        var password: String? = null
+        var permissions: List<String> = mutableListOf<String>()
+        fun toPropertyMap() = mapOf(
+                "username" to name,
+                "password" to password,
+                "permissions" to permissions)
+    }
 }
