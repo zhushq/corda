@@ -247,7 +247,9 @@ object BFTSMaRt {
 
         protected fun validateTimeWindow(t: TimeWindow?) {
             if (t != null && !timeWindowChecker.isValid(t))
-                throw NotaryException(NotaryError.TimeWindowInvalid)
+                throw NotaryException(
+                        NotaryError.TimeWindowInvalid(timeWindowChecker.clock.instant(), t)
+                )
         }
 
         protected fun sign(bytes: ByteArray): DigitalSignature.WithKey {

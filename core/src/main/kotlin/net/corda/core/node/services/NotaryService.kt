@@ -58,7 +58,9 @@ abstract class TrustedAuthorityNotaryService : NotaryService() {
 
     fun validateTimeWindow(t: TimeWindow?) {
         if (t != null && !timeWindowChecker.isValid(t))
-            throw NotaryException(NotaryError.TimeWindowInvalid)
+            throw NotaryException(
+                    NotaryError.TimeWindowInvalid(timeWindowChecker.clock.instant(), t)
+            )
     }
 
     /**
