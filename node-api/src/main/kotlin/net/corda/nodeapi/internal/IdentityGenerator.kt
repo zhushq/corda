@@ -7,8 +7,11 @@ import net.corda.core.identity.Party
 import net.corda.core.internal.cert
 import net.corda.core.internal.createDirectories
 import net.corda.core.internal.div
+import net.corda.core.internal.toX509CertHolder
 import net.corda.core.utilities.trace
-import net.corda.nodeapi.internal.crypto.*
+import net.corda.nodeapi.internal.crypto.CertificateType
+import net.corda.nodeapi.internal.crypto.X509KeyStore
+import net.corda.nodeapi.internal.crypto.X509Utilities
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import java.security.cert.X509Certificate
@@ -36,7 +39,7 @@ object IdentityGenerator {
      * @param name The name of the identity.
      * @param threshold The threshold for the generated group [CompositeKey].
      * @param customRootCert the certificate to use as the Corda root CA. If not specified the one in
-     *      internal/certificates/cordadevcakeys.jks is used.
+     *      X509Utilities.loadDevCaKeyStore is used.
      */
     private fun generateToDisk(dirs: List<Path>,
                                name: CordaX500Name,
@@ -47,18 +50,24 @@ object IdentityGenerator {
         val keyPairs = (1..dirs.size).map { generateKeyPair() }
         val key = CompositeKey.Builder().addKeys(keyPairs.map { it.public }).build(threshold)
 
-        val caKeyStore = loadKeyStore(javaClass.classLoader.getResourceAsStream("certificates/cordadevcakeys.jks"), "cordacadevpass")
-        val intermediateCa = caKeyStore.getCertificateAndKeyPair(X509Utilities.CORDA_INTERMEDIATE_CA, "cordacadevkeypass")
-        val rootCert = customRootCert ?: caKeyStore.getCertificate(X509Utilities.CORDA_ROOT_CA)
+        val intermediateCa = X509Utilities.DEV_INTERMEDIATE_CA  // TODO We need to re-generate the intermediate cert if using a custom root
+        val rootCert = customRootCert ?: X509Utilities.DEV_ROOT_CA.certificate
 
         keyPairs.zip(dirs) { keyPair, dir ->
-            val serviceKeyCert = X509Utilities.createCertificate(CertificateType.SERVICE_IDENTITY, intermediateCa.certificate, intermediateCa.keyPair, name, keyPair.public)
-            val compositeKeyCert = X509Utilities.createCertificate(CertificateType.SERVICE_IDENTITY, intermediateCa.certificate, intermediateCa.keyPair, name, key)
-            val certPath = (dir / "certificates").createDirectories() / "distributedService.jks"
-            val keystore = loadOrCreateKeyStore(certPath, "cordacadevpass")
-            keystore.setCertificateEntry("$aliasPrefix-composite-key", compositeKeyCert.cert)
-            keystore.setKeyEntry("$aliasPrefix-private-key", keyPair.private, "cordacadevkeypass".toCharArray(), arrayOf(serviceKeyCert.cert, intermediateCa.certificate.cert, rootCert))
-            keystore.save(certPath, "cordacadevpass")
+            val (serviceKeyCert, compositeKeyCert) = listOf(keyPair.public, key).map { publicKey ->
+                X509Utilities.createCertificate(
+                        CertificateType.SERVICE_IDENTITY,
+                        intermediateCa.certificate.toX509CertHolder(),
+                        intermediateCa.keyPair,
+                        name,
+                        publicKey
+                )
+            }
+            val distServicesFile = (dir / "certificates").createDirectories() / "distributedService.jks"
+            X509KeyStore.fromFile(distServicesFile, "cordacadevpass", createNew = true).update {
+                setCertificate("$aliasPrefix-composite-key", compositeKeyCert.cert)
+                setPrivateKey("$aliasPrefix-private-key", keyPair.private, listOf(serviceKeyCert.cert, intermediateCa.certificate, rootCert))
+            }
         }
 
         return Party(name, key)

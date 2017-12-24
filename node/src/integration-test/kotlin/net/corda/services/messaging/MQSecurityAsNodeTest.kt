@@ -3,11 +3,13 @@ package net.corda.services.messaging
 import net.corda.core.crypto.Crypto
 import net.corda.core.identity.CordaX500Name
 import net.corda.core.internal.*
+import net.corda.nodeapi.RPCApi
 import net.corda.nodeapi.internal.ArtemisMessagingComponent.Companion.NODE_USER
 import net.corda.nodeapi.internal.ArtemisMessagingComponent.Companion.PEER_USER
-import net.corda.nodeapi.RPCApi
 import net.corda.nodeapi.internal.config.SSLConfiguration
-import net.corda.nodeapi.internal.crypto.*
+import net.corda.nodeapi.internal.crypto.CertificateType
+import net.corda.nodeapi.internal.crypto.X509Utilities
+import net.corda.nodeapi.internal.crypto.save
 import org.apache.activemq.artemis.api.config.ActiveMQDefaultConfiguration
 import org.apache.activemq.artemis.api.core.ActiveMQClusterSecurityException
 import org.apache.activemq.artemis.api.core.ActiveMQNotConnectedException
@@ -87,40 +89,34 @@ class MQSecurityAsNodeTest : MQSecurityTest() {
                 val legalName = CordaX500Name("MegaCorp", "London", "GB")
                 certificatesDirectory.createDirectories()
                 if (!trustStoreFile.exists()) {
-                    javaClass.classLoader.getResourceAsStream("certificates/cordatruststore.jks").copyTo(trustStoreFile)
+                    X509Utilities.loadDevCaKeyStore().internal.save(trustStoreFile, trustStorePassword)
                 }
 
-                val caKeyStore = loadKeyStore(
-                        javaClass.classLoader.getResourceAsStream("certificates/cordadevcakeys.jks"),
-                        "cordacadevpass")
-
-                val rootCACert = caKeyStore.getX509Certificate(X509Utilities.CORDA_ROOT_CA).toX509CertHolder()
-                val intermediateCA = caKeyStore.getCertificateAndKeyPair(X509Utilities.CORDA_INTERMEDIATE_CA, "cordacadevkeypass")
+                val rootCACert = X509Utilities.DEV_ROOT_CA.certificate
+                val intermediateCA = X509Utilities.DEV_INTERMEDIATE_CA
                 val clientKey = Crypto.generateKeyPair(X509Utilities.DEFAULT_TLS_SIGNATURE_SCHEME)
 
                 // Set name constrain to the legal name.
                 val nameConstraints = NameConstraints(arrayOf(GeneralSubtree(GeneralName(GeneralName.directoryName, legalName.x500Name))), arrayOf())
-                val clientCACert = X509Utilities.createCertificate(CertificateType.INTERMEDIATE_CA, intermediateCA.certificate,
+                val clientCACert = X509Utilities.createCertificate(CertificateType.INTERMEDIATE_CA, intermediateCA.certificate.toX509CertHolder(),
                         intermediateCA.keyPair, legalName, clientKey.public, nameConstraints = nameConstraints)
                 val tlsKey = Crypto.generateKeyPair(X509Utilities.DEFAULT_TLS_SIGNATURE_SCHEME)
                 // Using different x500 name in the TLS cert which is not allowed in the name constraints.
                 val clientTLSCert = X509Utilities.createCertificate(CertificateType.TLS, clientCACert, clientKey, CordaX500Name("MiniCorp", "London", "GB"), tlsKey.public)
-                val keyPass = keyStorePassword.toCharArray()
-                val clientCAKeystore = loadOrCreateKeyStore(nodeKeystore, keyStorePassword)
-                clientCAKeystore.addOrReplaceKey(
-                        X509Utilities.CORDA_CLIENT_CA,
-                        clientKey.private,
-                        keyPass,
-                        arrayOf(clientCACert, intermediateCA.certificate, rootCACert))
-                clientCAKeystore.save(nodeKeystore, keyStorePassword)
 
-                val tlsKeystore = loadOrCreateKeyStore(sslKeystore, keyStorePassword)
-                tlsKeystore.addOrReplaceKey(
-                        X509Utilities.CORDA_CLIENT_TLS,
-                        tlsKey.private,
-                        keyPass,
-                        arrayOf(clientTLSCert, clientCACert, intermediateCA.certificate, rootCACert))
-                tlsKeystore.save(sslKeystore, keyStorePassword)
+                openNodeKeyStore(createNew = true).update {
+                    setPrivateKey(
+                            X509Utilities.CORDA_CLIENT_CA,
+                            clientKey.private,
+                            listOf(clientCACert.cert, intermediateCA.certificate, rootCACert))
+                }
+
+                openSslKeyStore(createNew = true).update {
+                    setPrivateKey(
+                            X509Utilities.CORDA_CLIENT_TLS,
+                            tlsKey.private,
+                            listOf(clientTLSCert.cert, clientCACert.cert, intermediateCA.certificate, rootCACert))
+                }
             }
         }
 

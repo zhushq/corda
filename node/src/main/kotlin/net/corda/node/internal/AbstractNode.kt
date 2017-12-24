@@ -61,10 +61,10 @@ import net.corda.node.shell.InteractiveShell
 import net.corda.node.utilities.AffinityExecutor
 import net.corda.nodeapi.internal.IdentityGenerator
 import net.corda.nodeapi.internal.SignedNodeInfo
-import net.corda.nodeapi.internal.crypto.KeyStoreWrapper
+import net.corda.nodeapi.internal.crypto.CertificateType
 import net.corda.nodeapi.internal.crypto.X509CertificateFactory
+import net.corda.nodeapi.internal.crypto.X509KeyStore
 import net.corda.nodeapi.internal.crypto.X509Utilities
-import net.corda.nodeapi.internal.crypto.loadKeyStore
 import net.corda.nodeapi.internal.network.NETWORK_PARAMS_FILE_NAME
 import net.corda.nodeapi.internal.network.NetworkParameters
 import net.corda.nodeapi.internal.persistence.CordaPersistence
@@ -168,8 +168,9 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
         if (configuration.devMode) {
             log.warn("Corda node is running in dev mode.")
             configuration.configureWithDevSSLCertificate()
+        } else {
+            validateKeystore()
         }
-        validateKeystore()
     }
 
     private inline fun signNodeInfo(nodeInfo: NodeInfo, sign: (PublicKey, SerializedBytes<NodeInfo>) -> DigitalSignature): SignedNodeInfo {
@@ -571,8 +572,8 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
     private fun validateKeystore() {
         val containCorrectKeys = try {
             // This will throw IOException if key file not found or KeyStoreException if keystore password is incorrect.
-            val sslKeystore = loadKeyStore(configuration.sslKeystore, configuration.keyStorePassword)
-            val identitiesKeystore = loadKeyStore(configuration.nodeKeystore, configuration.keyStorePassword)
+            val sslKeystore = configuration.openSslKeyStore()
+            val identitiesKeystore = configuration.openNodeKeyStore()
             sslKeystore.containsAlias(X509Utilities.CORDA_CLIENT_TLS) && identitiesKeystore.containsAlias(X509Utilities.CORDA_CLIENT_CA)
         } catch (e: KeyStoreException) {
             log.warn("Certificate key store found but key store password does not match configuration.")
@@ -588,12 +589,9 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
         }
 
         // Check all cert path chain to the trusted root
-        val sslKeystore = loadKeyStore(configuration.sslKeystore, configuration.keyStorePassword)
-        val identitiesKeystore = loadKeyStore(configuration.nodeKeystore, configuration.keyStorePassword)
-        val trustStore = loadKeyStore(configuration.trustStoreFile, configuration.trustStorePassword)
-        val sslRoot = sslKeystore.getCertificateChain(X509Utilities.CORDA_CLIENT_TLS).last()
-        val clientCARoot = identitiesKeystore.getCertificateChain(X509Utilities.CORDA_CLIENT_CA).last()
-        val trustRoot = trustStore.getCertificate(X509Utilities.CORDA_ROOT_CA)
+        val sslRoot = configuration.openSslKeyStore().getCertificateChain(X509Utilities.CORDA_CLIENT_TLS).last()
+        val clientCARoot = configuration.openNodeKeyStore().getCertificateChain(X509Utilities.CORDA_CLIENT_CA).last()
+        val trustRoot = configuration.openTrustStore().getCertificate(X509Utilities.CORDA_ROOT_CA)
 
         require(sslRoot == trustRoot) { "TLS certificate must chain to the trusted root." }
         require(clientCARoot == trustRoot) { "Client CA certificate must chain to the trusted root." }
@@ -693,12 +691,9 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
     }
 
     private fun makeIdentityService(identityCert: X509Certificate): PersistentIdentityService {
-        val trustStore = KeyStoreWrapper(configuration.trustStoreFile, configuration.trustStorePassword)
-        val caKeyStore = KeyStoreWrapper(configuration.nodeKeystore, configuration.keyStorePassword)
-        val trustRoot = trustStore.getX509Certificate(X509Utilities.CORDA_ROOT_CA)
-        val clientCa = caKeyStore.certificateAndKeyPair(X509Utilities.CORDA_CLIENT_CA)
-        val caCertificates = arrayOf(identityCert, clientCa.certificate.cert)
-        return PersistentIdentityService(trustRoot, *caCertificates)
+        val trustRoot = configuration.openTrustStore().getCertificate(X509Utilities.CORDA_ROOT_CA)
+        val clientCa = configuration.openNodeKeyStore().getCertificate(X509Utilities.CORDA_CLIENT_CA)
+        return PersistentIdentityService(trustRoot, identityCert, clientCa)
     }
 
     protected abstract fun makeTransactionVerifierService(): TransactionVerifierService
@@ -722,7 +717,7 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
     protected abstract fun startMessagingService(rpcOps: RPCOps)
 
     private fun obtainIdentity(notaryConfig: NotaryConfig?): Pair<PartyAndCertificate, KeyPair> {
-        val keyStore = KeyStoreWrapper(configuration.nodeKeystore, configuration.keyStorePassword)
+        val keyStore = configuration.openNodeKeyStore()
 
         val (id, singleName) = if (notaryConfig == null || !notaryConfig.isClusterConfig) {
             // Node's main identity or if it's a single node notary
@@ -736,13 +731,12 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
 
         if (!keyStore.containsAlias(privateKeyAlias)) {
             singleName ?: throw IllegalArgumentException(
-                    "Unable to find in the key store the identity of the distributed notary ($id) the node is part of")
-            // TODO: Remove use of [IdentityGenerator.generateToDisk].
+                    "Unable to find in the key store the identity of the distributed notary the node is part of")
             log.info("$privateKeyAlias not found in key store ${configuration.nodeKeystore}, generating fresh key!")
             keyStore.signAndSaveNewKeyPair(singleName, privateKeyAlias, generateKeyPair())
         }
 
-        val (x509Cert, keyPair) = keyStore.certificateAndKeyPair(privateKeyAlias)
+        val (x509Cert, keyPair) = keyStore.getCertificateAndKeyPair(privateKeyAlias)
 
         // TODO: Use configuration to indicate composite key should be used instead of public key for the identity.
         val compositeKeyAlias = "$id-composite-key"
@@ -756,12 +750,11 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
         } else {
             keyStore.getCertificateChain(privateKeyAlias).let {
                 check(it[0].toX509CertHolder() == x509Cert) { "Certificates from key store do not line up!" }
-                it.asList()
+                it
             }
         }
 
-        val nodeCert = certificates[0] as? X509Certificate ?: throw ConfigurationException("Node certificate must be an X.509 certificate")
-        val subject = CordaX500Name.build(nodeCert.subjectX500Principal)
+        val subject = CordaX500Name.build(certificates[0].subjectX500Principal)
         // TODO Include the name of the distributed notary, which the node is part of, in the notary config so that we
         // can cross-check the identity we get from the key store
         if (singleName != null && subject != singleName) {
@@ -770,6 +763,25 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
 
         val certPath = X509CertificateFactory().generateCertPath(certificates)
         return Pair(PartyAndCertificate(certPath), keyPair)
+    }
+
+    // TODO This generates a legal identity cert and as such does not need the serviceName parameter, as it inherits
+    // the subject from the node CA cert.
+    private fun X509KeyStore.signAndSaveNewKeyPair(serviceName: CordaX500Name, privateKeyAlias: String, keyPair: KeyPair) {
+        val nodeCaCertPath = getCertificateChain(X509Utilities.CORDA_CLIENT_CA)
+        // Assume key password = store password.
+        val nodeCaCertAndKeyPair = getCertificateAndKeyPair(X509Utilities.CORDA_CLIENT_CA)
+        // Create new keys and store in keystore.
+        val identityCert = X509Utilities.createCertificate(
+                CertificateType.LEGAL_IDENTITY,
+                nodeCaCertAndKeyPair.certificate.toX509CertHolder(),
+                nodeCaCertAndKeyPair.keyPair,
+                serviceName,
+                keyPair.public)
+        // TODO: X509Utilities.validateCertificateChain()
+        // Assume key password = store password.
+        setPrivateKey(privateKeyAlias, keyPair.private, listOf(identityCert.cert) + nodeCaCertPath)
+        save()
     }
 
     protected open fun generateKeyPair() = cryptoGenerateKeyPair()

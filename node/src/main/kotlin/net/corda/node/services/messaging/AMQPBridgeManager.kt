@@ -14,7 +14,6 @@ import net.corda.nodeapi.internal.ArtemisMessagingComponent
 import net.corda.nodeapi.internal.ArtemisMessagingComponent.Companion.NODE_USER
 import net.corda.nodeapi.internal.ArtemisMessagingComponent.Companion.P2P_QUEUE
 import net.corda.nodeapi.internal.ArtemisMessagingComponent.Companion.PEER_USER
-import net.corda.nodeapi.internal.crypto.loadKeyStore
 import org.apache.activemq.artemis.api.core.SimpleString
 import org.apache.activemq.artemis.api.core.client.ActiveMQClient.DEFAULT_ACK_BATCH_SIZE
 import org.apache.activemq.artemis.api.core.client.ClientConsumer
@@ -38,9 +37,9 @@ internal class AMQPBridgeManager(val config: NodeConfiguration, val p2pAddress: 
     private val lock = ReentrantLock()
     private val bridgeNameToBridgeMap = mutableMapOf<String, AMQPBridge>()
     private var sharedEventLoopGroup: EventLoopGroup? = null
-    private val keyStore = loadKeyStore(config.sslKeystore, config.keyStorePassword)
+    private val keyStore = config.openSslKeyStore()
     private val keyStorePrivateKeyPassword: String = config.keyStorePassword
-    private val trustStore = loadKeyStore(config.trustStoreFile, config.trustStorePassword)
+    private val trustStore = config.openTrustStore().internal
     private var artemis: ArtemisMessagingClient? = null
 
     companion object {
@@ -161,7 +160,7 @@ internal class AMQPBridgeManager(val config: NodeConfiguration, val p2pAddress: 
         if (bridgeExists(getBridgeName(queueName, target))) {
             return
         }
-        val newBridge = AMQPBridge(queueName, target, legalNames, keyStore, keyStorePrivateKeyPassword, trustStore, sharedEventLoopGroup!!, artemis!!)
+        val newBridge = AMQPBridge(queueName, target, legalNames, keyStore.internal, keyStorePrivateKeyPassword, trustStore, sharedEventLoopGroup!!, artemis!!)
         lock.withLock {
             bridgeNameToBridgeMap[newBridge.bridgeName] = newBridge
         }

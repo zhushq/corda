@@ -4,12 +4,8 @@ import net.corda.core.CordaOID
 import net.corda.core.crypto.Crypto
 import net.corda.core.crypto.SignatureScheme
 import net.corda.core.crypto.random63BitValue
-import net.corda.core.internal.CertRole
 import net.corda.core.identity.CordaX500Name
-import net.corda.core.internal.cert
-import net.corda.core.internal.reader
-import net.corda.core.internal.writer
-import net.corda.core.internal.x500Name
+import net.corda.core.internal.*
 import net.corda.core.utilities.days
 import net.corda.core.utilities.millis
 import org.bouncycastle.asn1.*
@@ -302,6 +298,22 @@ object X509Utilities {
     fun createCertificateSigningRequest(subject: CordaX500Name, email: String, keyPair: KeyPair): PKCS10CertificationRequest {
         return createCertificateSigningRequest(subject, email, keyPair, DEFAULT_TLS_SIGNATURE_SCHEME)
     }
+
+    val DEV_INTERMEDIATE_CA: CertAndKeyPair by lazy {
+        loadDevCaKeyStore().getCertificateAndKeyPair(X509Utilities.CORDA_INTERMEDIATE_CA, "cordacadevkeypass")
+    }
+
+    val DEV_ROOT_CA: CertAndKeyPair by lazy {
+        loadDevCaKeyStore().getCertificateAndKeyPair(X509Utilities.CORDA_ROOT_CA, "cordacadevkeypass")
+    }
+
+    fun loadDevCaKeyStore(): X509KeyStore {
+        return X509KeyStore.fromStream(javaClass.getResourceAsStream("certificates/cordadevcakeys.jks"), "cordacadevpass")
+    }
+
+    fun loadDevTrustStore(): X509KeyStore {
+        return X509KeyStore.fromStream(javaClass.getResourceAsStream("certificates/cordatruststore.jks"), "trustpass")
+    }
 }
 
 /**
@@ -315,10 +327,12 @@ class X509CertificateFactory {
         return delegate.generateCertificate(input) as X509Certificate
     }
 
+    // TODO X509Certificate
     fun generateCertPath(certificates: List<Certificate>): CertPath {
         return delegate.generateCertPath(certificates)
     }
 
+    // TODO X509Certificate
     fun generateCertPath(vararg certificates: Certificate): CertPath {
         return delegate.generateCertPath(certificates.asList())
     }
@@ -399,4 +413,5 @@ enum class CertificateType(val keyUsage: KeyUsage, vararg val purposes: KeyPurpo
     )
 }
 
+@Deprecated("Use CertAndKeyPair instead")
 data class CertificateAndKeyPair(val certificate: X509CertificateHolder, val keyPair: KeyPair)

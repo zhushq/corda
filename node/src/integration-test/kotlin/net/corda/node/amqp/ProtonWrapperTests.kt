@@ -19,7 +19,6 @@ import net.corda.node.services.config.configureWithDevSSLCertificate
 import net.corda.node.services.messaging.ArtemisMessagingClient
 import net.corda.node.services.messaging.ArtemisMessagingServer
 import net.corda.nodeapi.internal.ArtemisMessagingComponent.Companion.PEER_USER
-import net.corda.nodeapi.internal.crypto.loadKeyStore
 import net.corda.testing.*
 import net.corda.testing.internal.rigorousMock
 import org.apache.activemq.artemis.api.core.RoutingType
@@ -250,9 +249,10 @@ class ProtonWrapperTests {
         }
         clientConfig.configureWithDevSSLCertificate()
 
-        val clientTruststore = loadKeyStore(clientConfig.trustStoreFile, clientConfig.trustStorePassword)
-        val clientKeystore = loadKeyStore(clientConfig.sslKeystore, clientConfig.keyStorePassword)
-        val amqpClient = AMQPClient(listOf(NetworkHostAndPort("localhost", serverPort),
+        val clientTruststore = clientConfig.openTrustStore().internal
+        val clientKeystore = clientConfig.openSslKeyStore().internal
+        return AMQPClient(
+                listOf(NetworkHostAndPort("localhost", serverPort),
                 NetworkHostAndPort("localhost", serverPort2),
                 NetworkHostAndPort("localhost", artemisPort)),
                 setOf(ALICE_NAME, CHARLIE_NAME),
@@ -260,8 +260,9 @@ class ProtonWrapperTests {
                 PEER_USER,
                 clientKeystore,
                 clientConfig.keyStorePassword,
-                clientTruststore, true)
-        return amqpClient
+                clientTruststore,
+                true
+        )
     }
 
     private fun createSharedThreadsClient(sharedEventGroup: EventLoopGroup, id: Int): AMQPClient {
@@ -273,16 +274,17 @@ class ProtonWrapperTests {
         }
         clientConfig.configureWithDevSSLCertificate()
 
-        val clientTruststore = loadKeyStore(clientConfig.trustStoreFile, clientConfig.trustStorePassword)
-        val clientKeystore = loadKeyStore(clientConfig.sslKeystore, clientConfig.keyStorePassword)
-        val amqpClient = AMQPClient(listOf(NetworkHostAndPort("localhost", serverPort)),
+        val clientTruststore = clientConfig.openTrustStore().internal
+        val clientKeystore = clientConfig.openSslKeyStore().internal
+        return AMQPClient(
+                listOf(NetworkHostAndPort("localhost", serverPort)),
                 setOf(ALICE_NAME),
                 PEER_USER,
                 PEER_USER,
                 clientKeystore,
                 clientConfig.keyStorePassword,
-                clientTruststore, true, sharedEventGroup)
-        return amqpClient
+                clientTruststore, true, sharedEventGroup
+        )
     }
 
     private fun createServer(port: Int, name: CordaX500Name = ALICE_NAME): AMQPServer {
@@ -294,16 +296,17 @@ class ProtonWrapperTests {
         }
         serverConfig.configureWithDevSSLCertificate()
 
-        val serverTruststore = loadKeyStore(serverConfig.trustStoreFile, serverConfig.trustStorePassword)
-        val serverKeystore = loadKeyStore(serverConfig.sslKeystore, serverConfig.keyStorePassword)
-        val amqpServer = AMQPServer("0.0.0.0",
+        val serverTruststore = serverConfig.openTrustStore().internal
+        val serverKeystore = serverConfig.openSslKeyStore().internal
+        return AMQPServer(
+                "0.0.0.0",
                 port,
                 PEER_USER,
                 PEER_USER,
                 serverKeystore,
                 serverConfig.keyStorePassword,
-                serverTruststore)
-        return amqpServer
+                serverTruststore
+        )
     }
 
 }

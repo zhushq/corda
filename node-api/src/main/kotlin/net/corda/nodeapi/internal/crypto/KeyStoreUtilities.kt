@@ -117,14 +117,6 @@ fun KeyStore.save(keyStoreFilePath: Path, storePassword: String) = keyStoreFileP
 fun KeyStore.store(out: OutputStream, password: String) = store(out, password.toCharArray())
 
 /**
- * Extract public and private keys from a KeyStore file assuming storage alias is known.
- * @param alias The name to lookup the Key and Certificate chain from.
- * @param keyPassword Password to unlock the private key entries.
- * @return The KeyPair found in the KeyStore under the specified alias.
- */
-fun KeyStore.getKeyPair(alias: String, keyPassword: String): KeyPair = getCertificateAndKeyPair(alias, keyPassword).keyPair
-
-/**
  * Helper method to load a Certificate and KeyPair from their KeyStore.
  * The access details should match those of the createCAKeyStoreAndTrustStore call used to manufacture the keys.
  * @param alias The name to search for the data. Typically if generated with the methods here this will be one of
@@ -144,7 +136,7 @@ fun KeyStore.getCertificateAndKeyPair(alias: String, keyPassword: String): Certi
  */
 fun KeyStore.getX509Certificate(alias: String): X509Certificate {
     val certificate = getCertificate(alias) ?: throw IllegalArgumentException("No certificate under alias \"$alias\".")
-    return certificate as? X509Certificate ?: throw IllegalArgumentException("Certificate under alias \"$alias\" is not an X.509 certificate.")
+    return certificate as? X509Certificate ?: throw IllegalStateException("Certificate under alias \"$alias\" is not an X.509 certificate: $certificate")
 }
 
 /**

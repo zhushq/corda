@@ -12,7 +12,7 @@ import net.corda.core.identity.CordaX500Name
 import net.corda.core.internal.cert
 import net.corda.core.internal.createDirectories
 import net.corda.node.services.config.NodeConfiguration
-import net.corda.nodeapi.internal.crypto.*
+import net.corda.nodeapi.internal.crypto.X509Utilities
 import net.corda.testing.ALICE_NAME
 import net.corda.testing.internal.rigorousMock
 import org.assertj.core.api.Assertions.assertThat
@@ -65,9 +65,9 @@ class NetworkRegistrationHelperTest {
 
         createRegistrationHelper().buildKeystore()
 
-        val nodeKeystore = loadKeyStore(config.nodeKeystore, config.keyStorePassword)
-        val sslKeystore = loadKeyStore(config.sslKeystore, config.keyStorePassword)
-        val trustStore = loadKeyStore(config.trustStoreFile, config.trustStorePassword)
+        val nodeKeystore = config.openNodeKeyStore()
+        val sslKeystore = config.openSslKeyStore()
+        val trustStore = config.openTrustStore()
 
         nodeKeystore.run {
             assertTrue(containsAlias(X509Utilities.CORDA_CLIENT_CA))
@@ -86,7 +86,7 @@ class NetworkRegistrationHelperTest {
             val nodeTlsCertChain = getCertificateChain(X509Utilities.CORDA_CLIENT_TLS)
             assertThat(nodeTlsCertChain).hasSize(4)
             // The TLS cert has the same subject as the node CA cert
-            assertThat(CordaX500Name.build((nodeTlsCertChain[0] as X509Certificate).subjectX500Principal)).isEqualTo(nodeLegalName)
+            assertThat(CordaX500Name.build(nodeTlsCertChain[0].subjectX500Principal)).isEqualTo(nodeLegalName)
             assertThat(nodeTlsCertChain.drop(1)).containsExactly(nodeCaCert, intermediateCaCert, rootCaCert)
         }
 
@@ -125,9 +125,8 @@ class NetworkRegistrationHelperTest {
 
     private fun saveTrustStoreWithRootCa(rootCa: X509Certificate) {
         config.trustStoreFile.parent.createDirectories()
-        loadOrCreateKeyStore(config.trustStoreFile, config.trustStorePassword).also {
-            it.addOrReplaceCertificate(X509Utilities.CORDA_ROOT_CA, rootCa)
-            it.save(config.trustStoreFile, config.trustStorePassword)
+        config.openTrustStore(createNew = true).update {
+            setCertificate(X509Utilities.CORDA_ROOT_CA, rootCa)
         }
     }
 

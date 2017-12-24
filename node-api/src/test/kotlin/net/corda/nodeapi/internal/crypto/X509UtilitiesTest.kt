@@ -12,12 +12,16 @@ import net.corda.core.serialization.SerializationContext
 import net.corda.core.serialization.deserialize
 import net.corda.core.serialization.serialize
 import net.corda.node.serialization.KryoServerSerializationScheme
-import net.corda.node.services.config.createKeystoreForCordaNode
+import net.corda.node.services.config.createKeyStores
+import net.corda.nodeapi.internal.config.SSLConfiguration
 import net.corda.nodeapi.internal.serialization.AllWhitelist
 import net.corda.nodeapi.internal.serialization.SerializationContextImpl
 import net.corda.nodeapi.internal.serialization.SerializationFactoryImpl
 import net.corda.nodeapi.internal.serialization.kryo.KryoHeaderV0_1
-import net.corda.testing.*
+import net.corda.testing.ALICE_NAME
+import net.corda.testing.BOB_NAME
+import net.corda.testing.TestIdentity
+import org.assertj.core.api.Assertions.assertThat
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.asn1.x509.BasicConstraints
 import org.bouncycastle.asn1.x509.Extension
@@ -34,10 +38,8 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.nio.file.Path
 import java.security.KeyStore
-import java.security.PrivateKey
 import java.security.SecureRandom
 import java.security.cert.CertPath
-import java.security.cert.Certificate
 import java.security.cert.X509Certificate
 import java.util.*
 import java.util.stream.Stream
@@ -156,106 +158,58 @@ class X509UtilitiesTest {
     }
 
     @Test
-    fun `create full CA keystore`() {
-        val tmpKeyStore = tempFile("keystore.jks")
-        val tmpTrustStore = tempFile("truststore.jks")
-
-        // Generate Root and Intermediate CA cert and put both into key store and root ca cert into trust store
-        createCAKeyStoreAndTrustStore(tmpKeyStore, "keystorepass", "keypass", tmpTrustStore, "trustpass")
-
-        // Load back generated root CA Cert and private key from keystore and check against copy in truststore
-        val keyStore = loadKeyStore(tmpKeyStore, "keystorepass")
-        val trustStore = loadKeyStore(tmpTrustStore, "trustpass")
-        val rootCaCert = keyStore.getCertificate(X509Utilities.CORDA_ROOT_CA) as X509Certificate
-        val rootCaPrivateKey = keyStore.getKey(X509Utilities.CORDA_ROOT_CA, "keypass".toCharArray()) as PrivateKey
-        val rootCaFromTrustStore = trustStore.getCertificate(X509Utilities.CORDA_ROOT_CA) as X509Certificate
-        assertEquals(rootCaCert, rootCaFromTrustStore)
-        rootCaCert.checkValidity(Date())
-        rootCaCert.verify(rootCaCert.publicKey)
-
-        // Now sign something with private key and verify against certificate public key
-        val testData = "12345".toByteArray()
-        val caSignature = Crypto.doSign(X509Utilities.DEFAULT_TLS_SIGNATURE_SCHEME, rootCaPrivateKey, testData)
-        assertTrue { Crypto.isValid(X509Utilities.DEFAULT_TLS_SIGNATURE_SCHEME, rootCaCert.publicKey, caSignature, testData) }
-
-        // Load back generated intermediate CA Cert and private key
-        val intermediateCaCert = keyStore.getCertificate(X509Utilities.CORDA_INTERMEDIATE_CA) as X509Certificate
-        val intermediateCaCertPrivateKey = keyStore.getKey(X509Utilities.CORDA_INTERMEDIATE_CA, "keypass".toCharArray()) as PrivateKey
-        intermediateCaCert.checkValidity(Date())
-        intermediateCaCert.verify(rootCaCert.publicKey)
-
-        // Now sign something with private key and verify against certificate public key
-        val intermediateSignature = Crypto.doSign(X509Utilities.DEFAULT_TLS_SIGNATURE_SCHEME, intermediateCaCertPrivateKey, testData)
-        assertTrue { Crypto.isValid(X509Utilities.DEFAULT_TLS_SIGNATURE_SCHEME, intermediateCaCert.publicKey, intermediateSignature, testData) }
-    }
-
-    @Test
     fun `create server certificate in keystore for SSL`() {
-        val tmpCAKeyStore = tempFile("keystore.jks")
-        val tmpTrustStore = tempFile("truststore.jks")
-        val tmpSSLKeyStore = tempFile("sslkeystore.jks")
-        val tmpServerKeyStore = tempFile("serverkeystore.jks")
+        val sslConfig = object : SSLConfiguration {
+            override val certificatesDirectory = tempFolder.root.toPath()
+            override val keyStorePassword = "serverstorepass"
+            override val trustStorePassword = "trustpass"
+        }
 
-        // Generate Root and Intermediate CA cert and put both into key store and root ca cert into trust store
-        createCAKeyStoreAndTrustStore(tmpCAKeyStore,
-                "cakeystorepass",
-                "cakeypass",
-                tmpTrustStore,
-                "trustpass")
-
-        // Load signing intermediate CA cert
-        val caKeyStore = loadKeyStore(tmpCAKeyStore, "cakeystorepass")
-        val caCertAndKey = caKeyStore.getCertificateAndKeyPair(X509Utilities.CORDA_INTERMEDIATE_CA, "cakeypass")
+        val (rootCa, intermediateCa) = createRootAndIntermediateCAs()
 
         // Generate server cert and private key and populate another keystore suitable for SSL
-        createKeystoreForCordaNode(tmpSSLKeyStore, tmpServerKeyStore, "serverstorepass", "serverkeypass", caKeyStore, "cakeypass", MEGA_CORP.name)
+        val (serverKeyStore, sslKeyStore) = sslConfig.createKeyStores(rootCa.certificate, intermediateCa, MEGA_CORP.name, "serverkeypass")
 
-        // Load back server certificate
-        val serverKeyStore = loadKeyStore(tmpServerKeyStore, "serverstorepass")
-        val serverCertAndKey = serverKeyStore.getCertificateAndKeyPair(X509Utilities.CORDA_CLIENT_CA, "serverkeypass")
+        val (serverCert, serverKeyPair) = serverKeyStore.getCertificateAndKeyPair(X509Utilities.CORDA_CLIENT_CA, "serverkeypass")
 
-        serverCertAndKey.certificate.isValidOn(Date())
-        serverCertAndKey.certificate.isSignatureValid(JcaContentVerifierProviderBuilder().build(caCertAndKey.certificate.subjectPublicKeyInfo))
+        serverCert.run {
+            checkValidity(Date())
+            verify(intermediateCa.certificate.publicKey)
+            assertThat(CordaX500Name.build(subjectX500Principal)).isEqualTo(MEGA_CORP.name)
+        }
 
-        assertTrue { serverCertAndKey.certificate.subject.toString().contains(MEGA_CORP.name.organisation) }
-
-        // Load back server certificate
-        val sslKeyStore = loadKeyStore(tmpSSLKeyStore, "serverstorepass")
-        val sslCertAndKey = sslKeyStore.getCertificateAndKeyPair(X509Utilities.CORDA_CLIENT_TLS, "serverkeypass")
-
-        sslCertAndKey.certificate.isValidOn(Date())
-        sslCertAndKey.certificate.isSignatureValid(JcaContentVerifierProviderBuilder().build(serverCertAndKey.certificate.subjectPublicKeyInfo))
-
-        assertTrue { sslCertAndKey.certificate.subject.toString().contains(MEGA_CORP.name.organisation) }
         // Now sign something with private key and verify against certificate public key
         val testData = "123456".toByteArray()
-        val signature = Crypto.doSign(X509Utilities.DEFAULT_TLS_SIGNATURE_SCHEME, serverCertAndKey.keyPair.private, testData)
-        val publicKey = Crypto.toSupportedPublicKey(serverCertAndKey.certificate.subjectPublicKeyInfo)
+        val signature = Crypto.doSign(X509Utilities.DEFAULT_TLS_SIGNATURE_SCHEME, serverKeyPair.private, testData)
+        val publicKey = Crypto.toSupportedPublicKey(serverCert.publicKey)
         assertTrue { Crypto.isValid(X509Utilities.DEFAULT_TLS_SIGNATURE_SCHEME, publicKey, signature, testData) }
+
+        val sslCert = sslKeyStore.getCertificate(X509Utilities.CORDA_CLIENT_TLS)
+        sslCert.run {
+            checkValidity(Date())
+            verify(serverCert.publicKey)
+            assertThat(CordaX500Name.build(subjectX500Principal)).isEqualTo(MEGA_CORP.name)
+        }
     }
 
     @Test
     fun `create server cert and use in SSL socket`() {
-        val tmpCAKeyStore = tempFile("keystore.jks")
-        val tmpTrustStore = tempFile("truststore.jks")
-        val tmpSSLKeyStore = tempFile("sslkeystore.jks")
-        val tmpServerKeyStore = tempFile("serverkeystore.jks")
+        val sslConfig = object : SSLConfiguration {
+            override val certificatesDirectory = tempFolder.root.toPath()
+            override val keyStorePassword = "serverstorepass"
+            override val trustStorePassword = "trustpass"
+        }
 
-        // Generate Root and Intermediate CA cert and put both into key store and root ca cert into trust store
-        val caKeyStore = createCAKeyStoreAndTrustStore(tmpCAKeyStore,
-                "cakeystorepass",
-                "cakeypass",
-                tmpTrustStore,
-                "trustpass")
+        val (rootCa, intermediateCa) = createRootAndIntermediateCAs()
+
+        val trustStore = createTrustStore(rootCa.certificate, sslConfig.trustStorePassword)
 
         // Generate server cert and private key and populate another keystore suitable for SSL
-        createKeystoreForCordaNode(tmpSSLKeyStore, tmpServerKeyStore, "serverstorepass", "serverstorepass", caKeyStore, "cakeypass", MEGA_CORP.name)
-        val keyStore = loadKeyStore(tmpSSLKeyStore, "serverstorepass")
-        val trustStore = loadKeyStore(tmpTrustStore, "trustpass")
+        val (_, sslKeyStore) = sslConfig.createKeyStores(rootCa.certificate, intermediateCa, MEGA_CORP.name)
 
         val context = SSLContext.getInstance("TLS")
         val keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
-        keyManagerFactory.init(keyStore, "serverstorepass".toCharArray())
+        keyManagerFactory.init(sslKeyStore.internal, sslConfig.keyStorePassword.toCharArray())
         val keyManagers = keyManagerFactory.keyManagers
         val trustMgrFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
         trustMgrFactory.init(trustStore)
@@ -266,12 +220,14 @@ class X509UtilitiesTest {
         val clientSocketFactory = context.socketFactory
 
         val serverSocket = serverSocketFactory.createServerSocket(0) as SSLServerSocket // use 0 to get first free socket
-        val serverParams = SSLParameters(arrayOf("TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256",
-                "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256",
-                "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
-                "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA",
-                "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
-                "TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256"),
+        val serverParams = SSLParameters(
+                arrayOf(
+                        "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256",
+                        "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256",
+                        "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
+                        "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA",
+                        "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+                        "TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256"),
                 arrayOf("TLSv1.2"))
         serverParams.wantClientAuth = true
         serverParams.needClientAuth = true
@@ -280,12 +236,14 @@ class X509UtilitiesTest {
         serverSocket.useClientMode = false
 
         val clientSocket = clientSocketFactory.createSocket() as SSLSocket
-        val clientParams = SSLParameters(arrayOf("TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256",
-                "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256",
-                "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
-                "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA",
-                "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
-                "TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256"),
+        val clientParams = SSLParameters(
+                arrayOf(
+                        "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256",
+                        "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256",
+                        "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
+                        "TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA",
+                        "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+                        "TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256"),
                 arrayOf("TLSv1.2"))
         clientParams.endpointIdentificationAlgorithm = null // Reconfirm default no server name indication, use our own validator.
         clientSocket.sslParameters = clientParams
@@ -323,7 +281,7 @@ class X509UtilitiesTest {
         val peerChain = clientSocket.session.peerCertificates
         val peerX500Principal = (peerChain[0] as X509Certificate).subjectX500Principal
         assertEquals(MEGA_CORP.name.x500Principal, peerX500Principal)
-        X509Utilities.validateCertificateChain(trustStore.getX509Certificate(X509Utilities.CORDA_ROOT_CA), *peerChain)
+        X509Utilities.validateCertificateChain(rootCa.certificate, *peerChain)
         val output = DataOutputStream(clientSocket.outputStream)
         output.writeUTF("Hello World")
         var timeout = 0
@@ -344,55 +302,27 @@ class X509UtilitiesTest {
 
     private fun tempFile(name: String): Path = tempFolder.root.toPath() / name
 
-    /**
-     * All in one wrapper to manufacture a root CA cert and an Intermediate CA cert.
-     * Normally this would be run once and then the outputs would be re-used repeatedly to manufacture the server certs
-     * @param keyStoreFilePath The output KeyStore path to publish the private keys of the CA root and intermediate certs into.
-     * @param storePassword The storage password to protect access to the generated KeyStore and public certificates
-     * @param keyPassword The password that protects the CA private keys.
-     * Unlike the SSL libraries that tend to assume the password is the same as the keystore password.
-     * These CA private keys should be protected more effectively with a distinct password.
-     * @param trustStoreFilePath The output KeyStore to place the Root CA public certificate, which can be used as an SSL truststore
-     * @param trustStorePassword The password to protect the truststore
-     * @return The KeyStore object that was saved to file
-     */
-    private fun createCAKeyStoreAndTrustStore(keyStoreFilePath: Path,
-                                              storePassword: String,
-                                              keyPassword: String,
-                                              trustStoreFilePath: Path,
-                                              trustStorePassword: String
-    ): KeyStore {
-        val rootCAKey = generateKeyPair(X509Utilities.DEFAULT_TLS_SIGNATURE_SCHEME)
+    private fun createRootAndIntermediateCAs(): Pair<CertAndKeyPair, CertAndKeyPair> {
         val baseName = CordaX500Name(organisation = "R3CEV", locality = "London", country = "GB")
-        val rootCACert = X509Utilities.createSelfSignedCACertificate(baseName.copy(commonName = "Corda Node Root CA"), rootCAKey)
+
+        val rootCaKeyPair = generateKeyPair(X509Utilities.DEFAULT_TLS_SIGNATURE_SCHEME)
+        val rootCACert = X509Utilities.createSelfSignedCACertificate(baseName.copy(commonName = "Corda Node Root CA"), rootCaKeyPair)
 
         val intermediateCAKeyPair = Crypto.generateKeyPair(X509Utilities.DEFAULT_TLS_SIGNATURE_SCHEME)
         val intermediateCACert = X509Utilities.createCertificate(
                 CertificateType.INTERMEDIATE_CA,
                 rootCACert,
-                rootCAKey,
+                rootCaKeyPair,
                 baseName.copy(commonName = "Corda Node Intermediate CA"),
                 intermediateCAKeyPair.public)
 
-        val keyPass = keyPassword.toCharArray()
-        val keyStore = loadOrCreateKeyStore(keyStoreFilePath, storePassword)
+        return Pair(CertAndKeyPair(rootCACert.cert, rootCaKeyPair), CertAndKeyPair(intermediateCACert.cert, intermediateCAKeyPair))
+    }
 
-        keyStore.addOrReplaceKey(X509Utilities.CORDA_ROOT_CA, rootCAKey.private, keyPass, arrayOf<Certificate>(rootCACert.cert))
-
-        keyStore.addOrReplaceKey(X509Utilities.CORDA_INTERMEDIATE_CA,
-                intermediateCAKeyPair.private,
-                keyPass,
-                Stream.of(intermediateCACert, rootCACert).map { it.cert }.toTypedArray<Certificate>())
-
-        keyStore.save(keyStoreFilePath, storePassword)
-
-        val trustStore = loadOrCreateKeyStore(trustStoreFilePath, trustStorePassword)
-
-        trustStore.addOrReplaceCertificate(X509Utilities.CORDA_ROOT_CA, rootCACert.cert)
-        trustStore.addOrReplaceCertificate(X509Utilities.CORDA_INTERMEDIATE_CA, intermediateCACert.cert)
-
-        trustStore.save(trustStoreFilePath, trustStorePassword)
-
+    private fun createTrustStore(rootCaCert: X509Certificate, password: String): KeyStore {
+        val keyStore = KeyStore.getInstance(KEYSTORE_TYPE)
+        keyStore.load(null, password.toCharArray())
+        keyStore.setCertificateEntry(X509Utilities.CORDA_ROOT_CA, rootCaCert)
         return keyStore
     }
 
