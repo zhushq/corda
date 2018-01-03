@@ -2,6 +2,8 @@ package net.corda.core.crypto
 
 import net.corda.core.internal.X509EdDSAEngine
 import net.corda.core.serialization.serialize
+import net.corda.core.utilities.toBase58
+import net.corda.core.utilities.toBase58String
 import net.i2p.crypto.eddsa.EdDSAEngine
 import net.i2p.crypto.eddsa.EdDSAPrivateKey
 import net.i2p.crypto.eddsa.EdDSAPublicKey
@@ -171,14 +173,12 @@ object Crypto {
             "Composite keys composed from individual public keys"
     )
 
-    /** Our default signature scheme if no algorithm is specified (e.g. for key generation). */
+    /** Default signature scheme if no algorithm is specified (e.g. for key generation). */
     @JvmField
     val DEFAULT_SIGNATURE_SCHEME = EDDSA_ED25519_SHA512
 
-    /**
-     * Supported digital signature schemes.
-     * Note: Only the schemes added in this map will be supported (see [Crypto]).
-     */
+    // Supported digital signature schemes.
+    // Note: Only the schemes added in this map will be supported.
     private val signatureSchemeMap: Map<String, SignatureScheme> = listOf(
             RSA_SHA256,
             ECDSA_SECP256K1_SHA256,
@@ -188,10 +188,12 @@ object Crypto {
             COMPOSITE_KEY
     ).associateBy { it.schemeCodeName }
 
-    /**
-     * Map of X.509 algorithm identifiers to signature schemes Corda recognises. See RFC 2459 for the format of
-     * algorithm identifiers.
-     */
+    // Map of supported digital signature schemes associated by [SignatureScheme.schemeNumberID].
+    // SchemeNumberID is the scheme identifier attached to [SignatureMetadata].
+    private val signatureSchemeNumberIDMap: Map<Int, SignatureScheme> = supportedSignatureSchemes().associateBy { it.schemeNumberID }
+
+    // Map of X.509 algorithm identifiers to signature schemes Corda recognises. See RFC 2459 for the format of
+    // algorithm identifiers.
     private val algorithmMap: Map<AlgorithmIdentifier, SignatureScheme>
             = (signatureSchemeMap.values.flatMap { scheme -> scheme.alternativeOIDs.map { Pair(it, scheme) } }
             + signatureSchemeMap.values.map { Pair(it.signatureOID, it) })
@@ -213,9 +215,11 @@ object Crypto {
         addKeyInfoConverter(EDDSA_ED25519_SHA512.signatureOID.algorithm, KeyInfoConverter(EDDSA_ED25519_SHA512))
     }
 
+    /** List of supported [SignatureScheme]s. */
     @JvmStatic
     fun supportedSignatureSchemes(): List<SignatureScheme> = ArrayList(signatureSchemeMap.values)
 
+    /** Return the corresponding supported [Provider] object. */
     @JvmStatic
     fun findProvider(name: String): Provider {
         return providerMap[name] ?: throw IllegalArgumentException("Unrecognised provider: $name")
@@ -228,9 +232,7 @@ object Crypto {
         Security.addProvider(CordaSecurityProvider())
     }
 
-    /**
-     * Normalise an algorithm identifier by converting [DERNull] parameters into a Kotlin null value.
-     */
+    // Normalise an algorithm identifier by converting DERNull parameters into a Kotlin null value.
     private fun normaliseAlgorithmIdentifier(id: AlgorithmIdentifier): AlgorithmIdentifier {
         return if (id.parameters is DERNull) {
             AlgorithmIdentifier(id.algorithm, null)
@@ -239,6 +241,7 @@ object Crypto {
         }
     }
 
+    /** Find supported [SignatureScheme] based on the [AlgorithmIdentifier] input. */
     @JvmStatic
     fun findSignatureScheme(algorithm: AlgorithmIdentifier): SignatureScheme {
         return algorithmMap[normaliseAlgorithmIdentifier(algorithm)]
@@ -538,13 +541,15 @@ object Crypto {
         if (verificationResult) {
             return true
         } else {
-            throw SignatureException("Signature Verification failed!")
+            throw SignatureException("Signature verification failed for [scheme: ${signatureScheme.algorithmName}, key: ${publicKey.toBase58String()}, signatureData: ${signatureData.toBase58()}, clearData: ${clearData.toBase58()}]")
         }
     }
 
     /**
      * Utility to simplify the act of verifying a [TransactionSignature].
      * It returns true if it succeeds, but it always throws an exception if verification fails.
+     * The [SignatureScheme.schemeNumberID] advertised in [TransactionSignature.signatureMetadata] is used
+     * rather than [findSignatureScheme] to identify the corresponding signature scheme.
      * @param txId transaction's id (Merkle root).
      * @param transactionSignature the signature on the transaction.
      * @return true if verification passes or throw exception if verification fails.
@@ -557,8 +562,10 @@ object Crypto {
     @JvmStatic
     @Throws(InvalidKeyException::class, SignatureException::class)
     fun doVerify(txId: SecureHash, transactionSignature: TransactionSignature): Boolean {
+        require(transactionSignature.signatureMetadata.schemeNumberID in signatureSchemeNumberIDMap) { "Signature scheme with numberID: ${transactionSignature.signatureMetadata.schemeNumberID} is not supported"}
         val signableData = SignableData(txId, transactionSignature.signatureMetadata)
-        return Crypto.doVerify(transactionSignature.by, transactionSignature.bytes, signableData.serialize().bytes)
+        val scheme: SignatureScheme = signatureSchemeNumberIDMap[transactionSignature.signatureMetadata.schemeNumberID]!!
+        return Crypto.doVerify(scheme, transactionSignature.by, transactionSignature.bytes, signableData.serialize().bytes)
     }
 
     /**
