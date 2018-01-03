@@ -1,4 +1,4 @@
-package net.corda.core.node.services
+package net.corda.core.internal
 
 import net.corda.core.contracts.TimeWindow
 import net.corda.core.utilities.seconds
@@ -6,8 +6,7 @@ import org.junit.Test
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class TimeWindowCheckerTests {
     val clock: Clock = Clock.fixed(Instant.now(), ZoneOffset.UTC)
@@ -19,9 +18,10 @@ class TimeWindowCheckerTests {
         val timeWindowBetween = TimeWindow.between(now - 10.seconds, now + 10.seconds)
         val timeWindowFromOnly = TimeWindow.fromOnly(now - 10.seconds)
         val timeWindowUntilOnly = TimeWindow.untilOnly(now + 10.seconds)
-        assertTrue { timeWindowChecker.isValid(timeWindowBetween) }
-        assertTrue { timeWindowChecker.isValid(timeWindowFromOnly) }
-        assertTrue { timeWindowChecker.isValid(timeWindowUntilOnly) }
+
+        timeWindowChecker.validate(timeWindowBetween)
+        timeWindowChecker.validate(timeWindowFromOnly)
+        timeWindowChecker.validate(timeWindowUntilOnly)
     }
 
     @Test
@@ -31,9 +31,10 @@ class TimeWindowCheckerTests {
         val timeWindowBetweenFuture = TimeWindow.between(now + 2.seconds, now + 10.seconds)
         val timeWindowFromOnlyFuture = TimeWindow.fromOnly(now + 10.seconds)
         val timeWindowUntilOnlyPast = TimeWindow.untilOnly(now - 10.seconds)
-        assertFalse { timeWindowChecker.isValid(timeWindowBetweenPast) }
-        assertFalse { timeWindowChecker.isValid(timeWindowBetweenFuture) }
-        assertFalse { timeWindowChecker.isValid(timeWindowFromOnlyFuture) }
-        assertFalse { timeWindowChecker.isValid(timeWindowUntilOnlyPast) }
+
+        assertFailsWith<TimeWindowChecker.OutOfBoundsException> { timeWindowChecker.validate(timeWindowBetweenPast) }
+        assertFailsWith<TimeWindowChecker.OutOfBoundsException> { timeWindowChecker.validate(timeWindowBetweenFuture) }
+        assertFailsWith<TimeWindowChecker.OutOfBoundsException> { timeWindowChecker.validate(timeWindowFromOnlyFuture) }
+        assertFailsWith<TimeWindowChecker.OutOfBoundsException> { timeWindowChecker.validate(timeWindowUntilOnlyPast) }
     }
 }

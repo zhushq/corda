@@ -6,6 +6,7 @@ import net.corda.core.contracts.TimeWindow
 import net.corda.core.crypto.*
 import net.corda.core.flows.*
 import net.corda.core.identity.Party
+import net.corda.core.internal.TimeWindowChecker
 import net.corda.core.node.ServiceHub
 import net.corda.core.serialization.SingletonSerializeAsToken
 import net.corda.core.serialization.serialize
@@ -57,10 +58,14 @@ abstract class TrustedAuthorityNotaryService : NotaryService() {
     protected abstract val uniquenessProvider: UniquenessProvider
 
     fun validateTimeWindow(t: TimeWindow?) {
-        if (t != null && !timeWindowChecker.isValid(t))
+        if (t == null) return
+        try {
+            timeWindowChecker.validate(t)
+        } catch (e: TimeWindowChecker.OutOfBoundsException) {
             throw NotaryException(
-                    NotaryError.TimeWindowInvalid(timeWindowChecker.clock.instant(), t)
+                    NotaryError.TimeWindowInvalid(e.currentTime, e.timeWindow)
             )
+        }
     }
 
     /**

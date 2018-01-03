@@ -12,8 +12,8 @@ import net.corda.core.flows.NotaryError
 import net.corda.core.flows.NotaryException
 import net.corda.core.identity.CordaX500Name
 import net.corda.core.identity.Party
+import net.corda.core.internal.TimeWindowChecker
 import net.corda.core.node.services.NotaryService
-import net.corda.core.node.services.TimeWindowChecker
 import net.corda.core.node.services.UniquenessProvider
 import net.corda.core.schemas.PersistentStateRef
 import net.corda.core.serialization.deserialize

@@ -18,9 +18,9 @@ import net.corda.core.crypto.*
 import net.corda.core.flows.NotaryError
 import net.corda.core.flows.NotaryException
 import net.corda.core.identity.Party
+import net.corda.core.internal.TimeWindowChecker
 import net.corda.core.internal.declaredField
 import net.corda.core.internal.toTypedArray
-import net.corda.core.node.services.TimeWindowChecker
 import net.corda.core.node.services.UniquenessProvider
 import net.corda.core.schemas.PersistentStateRef
 import net.corda.core.serialization.CordaSerializable
@@ -246,10 +246,14 @@ object BFTSMaRt {
         }
 
         protected fun validateTimeWindow(t: TimeWindow?) {
-            if (t != null && !timeWindowChecker.isValid(t))
+            if (t == null) return
+            try {
+                timeWindowChecker.validate(t)
+            } catch (e: TimeWindowChecker.OutOfBoundsException) {
                 throw NotaryException(
-                        NotaryError.TimeWindowInvalid(timeWindowChecker.clock.instant(), t)
+                        NotaryError.TimeWindowInvalid(e.currentTime, e.timeWindow)
                 )
+            }
         }
 
         protected fun sign(bytes: ByteArray): DigitalSignature.WithKey {

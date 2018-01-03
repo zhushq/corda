@@ -2,8 +2,8 @@ package net.corda.node.services.transactions
 
 import net.corda.core.flows.FlowSession
 import net.corda.core.flows.NotaryFlow
+import net.corda.core.internal.TimeWindowChecker
 import net.corda.core.node.ServiceHub
-import net.corda.core.node.services.TimeWindowChecker
 import net.corda.core.node.services.TrustedAuthorityNotaryService
 import java.security.PublicKey
 
