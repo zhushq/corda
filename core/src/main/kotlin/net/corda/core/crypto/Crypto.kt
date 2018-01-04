@@ -40,6 +40,7 @@ import org.bouncycastle.pqc.jcajce.provider.BouncyCastlePQCProvider
 import org.bouncycastle.pqc.jcajce.provider.sphincs.BCSphincs256PrivateKey
 import org.bouncycastle.pqc.jcajce.provider.sphincs.BCSphincs256PublicKey
 import org.bouncycastle.pqc.jcajce.spec.SPHINCS256KeyGenParameterSpec
+import sun.security.ec.ECPublicKeyImpl
 import java.math.BigInteger
 import java.security.*
 import java.security.spec.InvalidKeySpecException
@@ -930,6 +931,7 @@ object Crypto {
         return when (key) {
             is BCECPublicKey, is EdDSAPublicKey -> publicKeyOnCurve(signatureScheme, key)
             is BCRSAPublicKey, is BCSphincs256PublicKey -> true // TODO: Check if non-ECC keys satisfy params (i.e. approved/valid RSA modulus size).
+            is ECPublicKeyImpl -> publicKeyOnCurve(signatureScheme, decodePublicKey(key.encoded)) // If Java's default EC implementation, convert to BC.
             else -> throw IllegalArgumentException("Unsupported key type: ${key::class}")
         }
     }
