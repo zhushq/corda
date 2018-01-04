@@ -2,8 +2,6 @@ package net.corda.core.crypto
 
 import net.corda.core.internal.X509EdDSAEngine
 import net.corda.core.serialization.serialize
-import net.corda.core.utilities.toBase58
-import net.corda.core.utilities.toBase58String
 import net.i2p.crypto.eddsa.EdDSAEngine
 import net.i2p.crypto.eddsa.EdDSAPrivateKey
 import net.i2p.crypto.eddsa.EdDSAPublicKey
@@ -290,6 +288,12 @@ object Crypto {
         return findSignatureScheme(keyInfo.privateKeyAlgorithm)
     }
 
+    @JvmStatic
+    private fun findSignatureScheme(schemeNumberID: Int): SignatureScheme {
+        return signatureSchemeNumberIDMap[schemeNumberID]
+                ?: throw IllegalArgumentException("Unsupported key/algorithm for schemeCodeName: $schemeNumberID")
+    }
+
     /**
      * Decode a PKCS8 encoded key to its [PrivateKey] object.
      * Use this method if the key type is a-priori unknown.
@@ -466,7 +470,7 @@ object Crypto {
     @Throws(InvalidKeyException::class, SignatureException::class)
     fun doSign(keyPair: KeyPair, signableData: SignableData): TransactionSignature {
         val sigKey: SignatureScheme = findSignatureScheme(keyPair.private)
-        val sigMetaData: SignatureScheme = findSignatureScheme(keyPair.public)
+        val sigMetaData: SignatureScheme = findSignatureScheme(signableData.signatureMetadata.schemeNumberID)
         require(sigKey == sigMetaData) {
             "Metadata schemeCodeName: ${sigMetaData.schemeCodeName} is not aligned with the key type: ${sigKey.schemeCodeName}."
         }
@@ -624,7 +628,8 @@ object Crypto {
      * @throws SignatureException if this signatureData object is not initialized properly,
      * the passed-in signatureData is improperly encoded or of the wrong type,
      * if this signatureData scheme is unable to process the input data provided, if the verification is not possible.
-     * @throws IllegalArgumentException if the requested signature scheme is not supported.
+     * @throws IllegalArgumentException if the requested signature scheme is not supported or
+     * the public key cannot be validated.
      */
     @JvmStatic
     @Throws(SignatureException::class)
@@ -632,6 +637,8 @@ object Crypto {
         require(isSupportedSignatureScheme(signatureScheme)) {
             "Unsupported key/algorithm for schemeCodeName: ${signatureScheme.schemeCodeName}"
         }
+        // Required for signatureSchemes that can support multiple key types/sizes, such as ECDSA (R1 and K1 curves).
+        require (validatePublicKey(signatureScheme, publicKey)) { "Public key: ${publicKey.toStringShort()} is not valid" }
         val signature = Signature.getInstance(signatureScheme.signatureName, providerMap[signatureScheme.providerName])
         signature.initVerify(publicKey)
         signature.update(clearData)
