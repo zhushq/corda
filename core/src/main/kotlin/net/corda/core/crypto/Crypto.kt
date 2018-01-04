@@ -541,7 +541,7 @@ object Crypto {
         if (verificationResult) {
             return true
         } else {
-            throw SignatureException("Signature verification failed for [scheme: ${signatureScheme.algorithmName}, key: ${publicKey.toBase58String()}, signatureData: ${signatureData.toBase58()}, clearData: ${clearData.toBase58()}]")
+            throw SignatureException("Signature verification failed for [scheme: ${signatureScheme.algorithmName}, keyShort: ${publicKey.toStringShort()}, signatureHash: ${signatureData.sha256()}, clearDataHash: ${clearData.sha256()}]")
         }
     }
 
