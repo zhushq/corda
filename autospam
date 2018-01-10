@@ -1,0 +1,29 @@
+#!/bin/bash
+
+set -ex
+
+commit=$(git log -n 1 --pretty=format:%H -- $(basename "$0"))
+
+touchpath=autospam.date
+
+while true; do
+
+    git reset --hard $commit
+
+    date >$touchpath
+
+    git add $touchpath
+
+    ci touch
+
+    publish -f
+
+    while true; do
+
+        sleep 29
+
+        wget -O - https://github.com/corda/corda/pull/2349 2>/dev/null | grep -A 2 'Integration Tests (Pull Requests)' | grep 'TeamCity build failed' && break
+
+    done
+
+done
