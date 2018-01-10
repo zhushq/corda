@@ -17,11 +17,18 @@ import net.corda.nodeapi.internal.config.User
 import net.corda.testing.*
 import net.corda.testing.driver.driver
 import org.junit.Test
+import java.lang.management.ManagementFactory
+import kotlin.concurrent.thread
 import kotlin.test.assertEquals
+import kotlin.test.fail
 
 class IntegrationTestingTutorial {
     @Test
     fun `alice bob cash exchange example`() {
+        thread {
+            Thread.sleep(20000) // allow 5s for driver init
+            Runtime.getRuntime().exec(arrayOf("kill", "-3", ManagementFactory.getRuntimeMXBean().name.split("@")[0]))
+        }
         // START 1
         driver(startNodesInProcess = true,
                 extraCordappPackagesToScan = listOf("net.corda.finance.contracts.asset")) {
@@ -108,5 +115,6 @@ class IntegrationTestingTutorial {
             }
             // END 5
         }
+        fail("it passed!!!")
     }
 }
