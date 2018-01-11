@@ -132,8 +132,8 @@ abstract class CustomSerializer<T : Any> : AMQPSerializer<T>, SerializerFor {
         override fun writeDescribedObject(obj: T, data: Data, type: Type, output: SerializationOutput) {
             val proxy = toProxy(obj)
             data.withList {
-                for (property in proxySerializer.propertySerializers.getters) {
-                    property.writeProperty(proxy, this, output)
+                proxySerializer.propertySerializers.forEach {
+                    it.getter.writeProperty(proxy, this, output)
                 }
             }
         }

@@ -70,8 +70,8 @@ class CorDappCustomSerializer(
 
         data.withDescribed(descriptor) {
             data.withList {
-                for (property in proxySerializer.propertySerializers.getters) {
-                    property.writeProperty(proxy, this, output)
+                proxySerializer.propertySerializers.forEach  {
+                    it.getter.writeProperty(proxy, this, output)
                 }
             }
         }

@@ -62,7 +62,7 @@ class PrivatePropertyTests {
         serializersByDescriptor.filterKeys { (it as Symbol) == schemaDescriptor }.values.apply {
             assertEquals(1, this.size)
             assertTrue(this.first() is ObjectSerializer)
-            val propertySerializers = (this.first() as ObjectSerializer).propertySerializers.getters.toList()
+            val propertySerializers = (this.first() as ObjectSerializer).propertySerializers.map { it.getter }
             assertEquals(2, propertySerializers.size)
             // a was public so should have a synthesised getter
             assertTrue(propertySerializers[0].propertyReader is PublicPropertyReader)
@@ -93,7 +93,7 @@ class PrivatePropertyTests {
         serializersByDescriptor.filterKeys { (it as Symbol) == schemaDescriptor }.values.apply {
             assertEquals(1, this.size)
             assertTrue(this.first() is ObjectSerializer)
-            val propertySerializers = (this.first() as ObjectSerializer).propertySerializers.getters.toList()
+            val propertySerializers = (this.first() as ObjectSerializer).propertySerializers.map { it.getter }
             assertEquals(2, propertySerializers.size)
 
             // as before, a is public so we'll use the getter method
