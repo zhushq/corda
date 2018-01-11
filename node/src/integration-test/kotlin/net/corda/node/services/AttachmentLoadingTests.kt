@@ -100,7 +100,6 @@ class AttachmentLoadingTests {
         assertEquals(expected, actual)
     }
 
-    @Ignore("Test has undeterministic capacity to hang, ignore till fixed")
     @Test
     fun `test that attachments retrieved over the network are not used for code`() = withoutTestSerialization {
         driver {
@@ -113,7 +112,6 @@ class AttachmentLoadingTests {
         Unit
     }
 
-    @Ignore("Test has undeterministic capacity to hang, ignore till fixed")
     @Test
     fun `tests that if the attachment is loaded on both sides already that a flow can run`() = withoutTestSerialization {
         driver {

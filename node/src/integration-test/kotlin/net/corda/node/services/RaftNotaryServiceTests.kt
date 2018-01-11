@@ -29,7 +29,6 @@ import kotlin.test.assertFailsWith
 class RaftNotaryServiceTests {
     private val notaryName = CordaX500Name("RAFT Notary Service", "London", "GB")
 
-    @Ignore("Test has undeterministic capacity to hang, ignore till fixed")
     @Test
     fun `detect double spend`() {
         driver(

@@ -3,7 +3,10 @@ package net.corda.testing.node.internal
 import net.corda.core.concurrent.CordaFuture
 import net.corda.core.internal.ThreadBox
 import net.corda.core.internal.concurrent.doneFuture
-import net.corda.core.utilities.*
+import net.corda.core.utilities.Try
+import net.corda.core.utilities.contextLogger
+import net.corda.core.utilities.getOrThrow
+import net.corda.core.utilities.seconds
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeoutException
@@ -32,6 +35,7 @@ class ShutdownManager(private val executorService: ExecutorService) {
     }
 
     fun shutdown() {
+        log.info("shutting down!")
         val shutdownActionFutures = state.locked {
             if (isShutdown) {
                 emptyList<CordaFuture<() -> Unit>>()
@@ -41,16 +45,24 @@ class ShutdownManager(private val executorService: ExecutorService) {
             }
         }
 
-        val shutdowns = shutdownActionFutures.map { Try.on { it.getOrThrow(1.seconds) } }
+        val shutdowns = shutdownActionFutures.map {
+            Try.on {
+                it.getOrThrow(1.seconds)
+            }
+        }
         shutdowns.reversed().forEach {
             when (it) {
                 is Try.Success ->
+
                     try {
                         it.value()
+                        log.info("successfully invoked shutdown: ${it.value}")
                     } catch (t: Throwable) {
                         log.warn("Exception while shutting down", t)
                     }
-                is Try.Failure -> log.warn("Exception while getting shutdown method, disregarding", it.exception)
+                is Try.Failure -> {
+                    log.warn("Exception while getting shutdown method, disregarding", it.exception)
+                }
             }
         }
     }

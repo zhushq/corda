@@ -54,6 +54,7 @@ import net.corda.testing.node.internal.DriverDSLImpl.ClusterType.VALIDATING_RAFT
 import net.corda.testing.setGlobalSerialization
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.junit.Ignore
 import rx.Observable
 import rx.observables.ConnectableObservable
 import rx.schedulers.Schedulers
@@ -587,10 +588,13 @@ class DriverDSLImpl(
             shutdownManager.registerShutdown(
                     nodeAndThreadFuture.map { (node, thread) ->
                         {
+                            log.info("Disposing node: ${node.info.legalIdentities.first().name}, addresses: ${node.info.addresses.joinToString()}")
                             node.dispose()
+                            log.info("Interrupting thread: name=${thread.name}, id=${thread.id}")
                             thread.interrupt()
                         }
                     }
+
             )
             return nodeAndThreadFuture.flatMap { (node, thread) ->
                 establishRpc(config, openFuture()).flatMap { rpc ->

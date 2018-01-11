@@ -214,9 +214,13 @@ open class Node(configuration: NodeConfiguration,
     }
 
     override fun startMessagingService(rpcOps: RPCOps) {
+        log.info("STARTING Artemis for node: ${services.myInfo.legalIdentities.first().name}, on ${services.myInfo.addresses.first().port}")
         // Start up the embedded MQ server
         messageBroker?.apply {
-            runOnStop += this::stop
+            runOnStop += {
+                log.info("STOPPING Artemis for node: ${services.myInfo.legalIdentities.first().name}, on ${services.myInfo.addresses.first().port}")
+                messageBroker!!.stop()
+            }
             start()
         }
         // Start up the MQ clients.
