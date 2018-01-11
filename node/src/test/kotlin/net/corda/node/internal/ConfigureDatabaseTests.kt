@@ -1,16 +1,12 @@
 package net.corda.node.internal
 
-import net.corda.core.internal.concurrent.fork
-import net.corda.core.internal.join
 import net.corda.core.node.services.IdentityService
-import net.corda.core.utilities.getOrThrow
 import net.corda.nodeapi.internal.persistence.DatabaseConfig
 import net.corda.testing.internal.rigorousMock
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.util.*
-import java.util.concurrent.Executors
 
 class ConfigureDatabaseTests {
     @Rule
@@ -27,18 +23,20 @@ class ConfigureDatabaseTests {
 
     @Test
     fun `get it working`() {
-        val dataSourcePropertiesList = listOf("Alice", "Bob").map(this::newDataSourceProperties)
+        // THEORY:
+        // hikari does a fail fast thing on create data source. this makes an h2 db and closes it
+        // we immediately do 2 transactions: one in CordaPersistence and another in AN
+        // one of the tx causes H2 to spin in Engine. this blocks the other thread as a side-effect
+        // so i believe we need 1 thread to make a hikari ds and spam a bunch of tx
+        // then h2 should spin for 30s in Engine
+        val dataSourceProperties = newDataSourceProperties("Alice")
         val databaseConfig = DatabaseConfig()
         val identityService = rigorousMock<IdentityService>()
-        val pool = Executors.newScheduledThreadPool(2) // What driver does.
-        val databases = dataSourcePropertiesList.map {
-            pool.fork {
-                configureDatabase(it, databaseConfig, identityService)
+        val database = configureDatabase(dataSourceProperties, databaseConfig, identityService)
+        repeat(100) { // actually 10 is enough to break it, as pool size is 10 and confDat does a tx
+            database.transaction {
+                println("Connected to ${connection.metaData.databaseProductName} database.")
             }
         }
-        databases.forEach {
-            it.getOrThrow().close()
-        }
-        pool.join()
     }
 }

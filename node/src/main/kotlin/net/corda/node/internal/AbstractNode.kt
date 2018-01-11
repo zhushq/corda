@@ -609,7 +609,7 @@ abstract class AbstractNode(val configuration: NodeConfiguration,
             val database = configureDatabase(props, configuration.database, identityService, schemaService)
             // Now log the vendor string as this will also cause a connection to be tested eagerly.
             database.transaction {
-                log.info("Connected to ${database.dataSource.connection.metaData.databaseProductName} database.")
+                log.info("Connected to ${connection.metaData.databaseProductName} database.")
             }
             runOnStop += database::close
             return database.transaction {
@@ -854,6 +854,7 @@ fun configureDatabase(dataSourceProperties: Properties,
     JavaTypeDescriptorRegistry.INSTANCE.addDescriptor(AbstractPartyDescriptor(identityService))
     val config = HikariConfig(dataSourceProperties)
     val dataSource = HikariDataSource(config)
+    //Thread.sleep(1000) // TODO: but find out why hikari takes 1s to start
     val attributeConverters = listOf(AbstractPartyToX500NameAsStringConverter(identityService))
     return CordaPersistence(dataSource, databaseConfig, schemaService.schemaOptions.keys, attributeConverters)
 }
