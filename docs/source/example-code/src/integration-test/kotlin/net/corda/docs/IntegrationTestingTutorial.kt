@@ -1,6 +1,7 @@
 package net.corda.docs
 
 import net.corda.core.internal.concurrent.transpose
+import net.corda.core.internal.declaredField
 import net.corda.core.messaging.CordaRPCOps
 import net.corda.core.messaging.startFlow
 import net.corda.core.messaging.vaultTrackBy
@@ -16,15 +17,42 @@ import net.corda.node.services.Permissions.Companion.startFlow
 import net.corda.nodeapi.internal.config.User
 import net.corda.testing.*
 import net.corda.testing.driver.driver
+import org.h2.engine.Database
+import org.h2.engine.Engine
 import org.junit.Test
 import java.lang.management.ManagementFactory
+import java.lang.reflect.Modifier
+import kotlin.collections.HashMap
 import kotlin.concurrent.thread
 import kotlin.test.assertEquals
 import kotlin.test.fail
 
+class SynchronizedGetPutRemove<K, V> : HashMap<K, V>() {
+    @Synchronized
+    override fun get(key: K): V? {
+        return super.get(key)
+    }
+
+    @Synchronized
+    override fun put(key: K, value: V): V? {
+        return super.put(key, value)
+    }
+
+    @Synchronized
+    override fun remove(key: K): V? {
+        return super.remove(key)
+    }
+}
+
 class IntegrationTestingTutorial {
     @Test
     fun `alice bob cash exchange example`() {
+        Engine::class.java.getDeclaredField("DATABASES").apply {
+            isAccessible = true
+            declaredField<Int>("modifiers").apply {
+                value = value and Modifier.FINAL.inv()
+            }
+        }.set(null, SynchronizedGetPutRemove<String, Database>())
         thread {
             Thread.sleep(20000) // allow 5s for driver init
             Runtime.getRuntime().exec(arrayOf("kill", "-3", ManagementFactory.getRuntimeMXBean().name.split("@")[0]))
