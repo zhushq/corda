@@ -49,7 +49,7 @@ class ShutdownManager(private val executorService: ExecutorService) {
         val shutdowns = shutdownActionFutures.map {
             log.info("Getting shutdown action future $it")
             Try.on {
-                it.getOrThrow(1.seconds)
+                it.getOrThrow(60.seconds)
             }
         }
         shutdowns.reversed().forEach {
