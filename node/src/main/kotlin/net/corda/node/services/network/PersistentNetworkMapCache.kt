@@ -22,10 +22,10 @@ import net.corda.core.utilities.contextLogger
 import net.corda.core.utilities.loggerFor
 import net.corda.node.services.api.NetworkMapCacheBaseInternal
 import net.corda.node.services.api.NetworkMapCacheInternal
+import net.corda.nodeapi.internal.network.NotaryInfo
 import net.corda.nodeapi.internal.persistence.CordaPersistence
 import net.corda.nodeapi.internal.persistence.bufferUntilDatabaseCommit
 import net.corda.nodeapi.internal.persistence.wrapWithDatabaseTransaction
-import net.corda.nodeapi.internal.network.NotaryInfo
 import org.hibernate.Session
 import rx.Observable
 import rx.subjects.PublishSubject
@@ -149,6 +149,12 @@ open class PersistentNetworkMapCache(
     override fun getNodesByLegalIdentityKey(identityKey: PublicKey): List<NodeInfo> =
             database.transaction { queryByIdentityKey(session, identityKey) }
 
+    override fun getNodesByOwningKeyIndex(identityKeyIndex: String): List<NodeInfo> {
+        return database.transaction {
+            queryByIdentityKeyIndex(session, identityKeyIndex)
+        }
+    }
+
     override fun getNodeByAddress(address: NetworkHostAndPort): NodeInfo? = database.transaction { queryByAddress(session, address) }
 
     override fun getPeerCertificateByLegalName(name: CordaX500Name): PartyAndCertificate? = database.transaction { queryIdentityByLegalName(session, name) }
@@ -246,15 +252,23 @@ open class PersistentNetworkMapCache(
     }
 
     private fun findByIdentityKey(session: Session, identityKey: PublicKey): List<NodeInfoSchemaV1.PersistentNodeInfo> {
+        return findByIdentityKeyIndex(session, identityKey.toStringShort())
+    }
+
+    private fun findByIdentityKeyIndex(session: Session, identityKeyIndex: String): List<NodeInfoSchemaV1.PersistentNodeInfo> {
         val query = session.createQuery(
                 "SELECT n FROM ${NodeInfoSchemaV1.PersistentNodeInfo::class.java.name} n JOIN n.legalIdentitiesAndCerts l WHERE l.owningKeyHash = :owningKeyHash",
                 NodeInfoSchemaV1.PersistentNodeInfo::class.java)
-        query.setParameter("owningKeyHash", identityKey.toStringShort())
+        query.setParameter("owningKeyHash", identityKeyIndex)
         return query.resultList
     }
 
     private fun queryByIdentityKey(session: Session, identityKey: PublicKey): List<NodeInfo> {
-        val result = findByIdentityKey(session, identityKey)
+        return queryByIdentityKeyIndex(session, identityKey.toStringShort())
+    }
+
+    private fun queryByIdentityKeyIndex(session: Session, identityKeyIndex: String): List<NodeInfo> {
+        val result = findByIdentityKeyIndex(session, identityKeyIndex)
         return result.map { it.toNodeInfo() }
     }
 
