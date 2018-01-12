@@ -137,10 +137,12 @@ class DriverDSLImpl(
 
     override fun shutdown() {
         if (waitForNodesToFinish) {
+            log.info("Waiting for nodes to finish")
             state.locked {
                 processes.forEach { it.waitFor() }
             }
         }
+        log.info("Invoking shutdown manager shutdown: ${_shutdownManager}")
         _shutdownManager?.shutdown()
         _executorService?.shutdownNow()
     }
@@ -584,7 +586,9 @@ class DriverDSLImpl(
             countObservables.remove(config.corda.myLegalName)
         }
         if (startInProcess ?: startNodesInProcess) {
+            log.info("Starting node in process: ${config.corda.myLegalName}")
             val nodeAndThreadFuture = startInProcessNode(executorService, config, cordappPackages)
+            log.info("Registarting node shutdown: ${config.corda.myLegalName}")
             shutdownManager.registerShutdown(
                     nodeAndThreadFuture.map { (node, thread) ->
                         {

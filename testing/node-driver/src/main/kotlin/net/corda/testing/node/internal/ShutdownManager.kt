@@ -41,11 +41,13 @@ class ShutdownManager(private val executorService: ExecutorService) {
                 emptyList<CordaFuture<() -> Unit>>()
             } else {
                 isShutdown = true
+                log.info("Shutdownmanager futures are ${registeredShutdowns.joinToString()}")
                 registeredShutdowns
             }
         }
 
         val shutdowns = shutdownActionFutures.map {
+            log.info("Getting shutdown action future $it")
             Try.on {
                 it.getOrThrow(1.seconds)
             }
@@ -65,11 +67,14 @@ class ShutdownManager(private val executorService: ExecutorService) {
                 }
             }
         }
+        log.info("Shutdown done, shutdowns: ${shutdowns.count()}")
     }
 
     fun registerShutdown(shutdown: CordaFuture<() -> Unit>) {
+        log.info("Attepting to register shutdown: $shutdown")
         state.locked {
             require(!isShutdown)
+            log.info("Registering shutdown: $shutdown")
             registeredShutdowns += shutdown
         }
     }
