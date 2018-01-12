@@ -3,12 +3,14 @@ package net.corda.node
 import net.corda.core.crypto.Crypto
 import net.corda.core.internal.div
 import net.corda.core.utilities.getOrThrow
+import net.corda.core.utilities.loggerFor
 import net.corda.node.services.config.configureDevKeyAndTrustStores
 import net.corda.nodeapi.internal.config.SSLConfiguration
 import net.corda.nodeapi.internal.crypto.*
 import net.corda.testing.ALICE_NAME
 import net.corda.testing.driver.driver
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.Ignore
 import org.junit.Test
 import java.nio.file.Path
 import javax.security.auth.x500.X500Principal
@@ -17,6 +19,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class NodeKeystoreCheckTest {
+    @Ignore
     @Test
     fun `starting node in non-dev mode with no key store`() {
         driver(startNodesInProcess = true) {
@@ -26,6 +29,7 @@ class NodeKeystoreCheckTest {
         }
     }
 
+    @Ignore
     @Test
     fun `node should throw exception if cert path doesn't chain to the trust root`() {
         driver(startNodesInProcess = true) {
